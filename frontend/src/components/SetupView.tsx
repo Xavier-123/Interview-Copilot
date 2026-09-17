@@ -1,13 +1,36 @@
-import React, { useState } from 'react';
-import { FileText, Briefcase, Settings2, Sparkles, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  FileText,
+  Briefcase,
+  Settings2,
+  Sparkles,
+  ArrowRight,
+  Upload,
+  Layers,
+  Cpu,
+  CheckCircle,
+  FileCheck,
+  Globe,
+  Users,
+  Code2,
+  Sliders
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { loadLLMConfig } from '../utils/llmConfig';
+import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel } from '../types';
 
 interface SetupViewProps {
   onStartInterview: (config: {
     resumeText: string;
     jdText: string;
-    difficulty: string;
+    interviewType: InterviewType;
+    industry: IndustryType;
+    jobRole: string;
+    seniority: SeniorityLevel;
+    difficulty: DifficultyLevel;
     style: string;
     language: string;
+    customConfig?: any;
   }) => void;
   isLoading: boolean;
 }
@@ -35,9 +58,19 @@ Python, LangChain, LangGraph, vLLM, pgvector, FastAPI, Prompt Engineering, RAG �
 - 基于 LangGraph 编排多 Agent 协作工作流，实现意图识别、深度检索与事实对齐；
 - 针对万级长文本构建混合检索(Hybrid Search: BM25 + Vector)与重排序(Reranker)，问答准确率由 68% 提升至 89%；
 - 引入流式 SSE 协议将首字响应时间压降至 450ms 内。`,
+
+  management: `王总监 | 9年经验 | 本科 | 期望岗位：研发总监 / 架构管理部负责人
+【核心专长】：
+技术战略规划、团队梯队搭建(管理25+研发)、敏捷研发效能体系(CI/CD/自动化测试)、研发成本与云资源优化
+
+【核心管理成效】：
+1. 核心技术团队重塑与梯队组建
+- 设立资深Tech Lead双通道晋升机制，建立代码审查(CR)红线制度，团队核心骨干流失率降低至5%以下；
+2. 中台微服务化拆分与降本增效
+- 推动老旧遗留单体解耦，主导服务网格改造，年节省计算与网络云资源开销约180万元。`,
 };
 
-const SAMPLE_JDS = {
+const SAMPLE_JDS: Record<string, string> = {
   backend: `【岗位职责】：
 1. 负责核心基础架构与高并发业务系统的演进与服务治理；
 2. 解决分布式系统在大流量、极端网络分区与高并发下的高可用、数据一致性及性能瓶颈；
@@ -57,93 +90,567 @@ const SAMPLE_JDS = {
 1. 熟练掌握 LangGraph / LangChain 架构与主流开源大模型应用开发；
 2. 深入理解向量检索原理与提示词工程最佳实践；
 3. 具备强烈的探索精神与快速攻坚未知技术问题的能力。`,
+
+  management: `【岗位职责】：
+1. 全面负责核心产品线研发团队的管理与战略规划，直接管理架构师、后端、前端团队；
+2. 负责技术战略路线图制定，平衡短期业务交付与长期技术架构演进，化解技术债务；
+3. 建立并持续优化研发效能、工程质量度量指标体系与人才培养机制。
+
+【任职要求】：
+1. 7年以上大型互联网或科技企业研发经验，3年以上20人以上技术团队管理经验；
+2. 具备优秀的大局观、跨部门协同推进能力与技术战略眼光。`,
 };
 
+const INDUSTRY_OPTIONS: IndustryType[] = [
+  '互联网/电商',
+  '人工智能/大模型',
+  '金融科技/量化',
+  '智能制造/自动驾驶',
+  '企业服务/SaaS',
+  '游戏开发',
+  '医疗健康/生物医药',
+  '通用行业',
+];
+
+const PRESET_ROLES: Record<IndustryType, string[]> = {
+  '互联网/电商': ['资深后端开发', '高并发架构师', '前端架构师', '大数据平台开发', '研发效能/DevOps专家'],
+  '人工智能/大模型': ['大模型应用/Agent开发专家', '算法工程/RAG专家', 'AI基础设施/算力调度', '推荐算法工程师'],
+  '金融科技/量化': ['量化系统研发', '核心清结算开发', '风控引擎架构师', '金融交易后端'],
+  '智能制造/自动驾驶': ['自动驾驶系统研发', '嵌入式/C++中间件', '车联网后端架构', '仿真平台开发'],
+  '企业服务/SaaS': ['SaaS多租户后端', '企业中台架构师', '分布式工作流系统', '前端全栈开发'],
+  '游戏开发': ['游戏服务端主程', 'Unity/UE引擎开发', '游戏网络同步专家', '高性能游戏后端'],
+  '医疗健康/生物医药': ['医疗大数据架构师', '医学影像AI算法', '健康中台研发', '信息系统工程师'],
+  '通用行业': ['高级软件工程师', '技术负责人/Tech Lead', '系统架构师', '技术总监/VP']
+};
+
+const INTERVIEW_TYPE_OPTIONS: Array<{
+  type: InterviewType;
+  title: string;
+  subtitle: string;
+  icon: any;
+  color: string;
+}> = [
+  {
+    type: 'structured',
+    title: '结构化全流程面试',
+    subtitle: '破冰 -> 深度技术 -> STAR行为 -> 极端挑战 -> 反问',
+    icon: Layers,
+    color: 'border-blue-500/50 bg-blue-950/20 text-blue-300',
+  },
+  {
+    type: 'technical',
+    title: '专业技术深度面',
+    subtitle: '技术栈与高并发架构、底层源码、一致性权衡',
+    icon: Code2,
+    color: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-300',
+  },
+  {
+    type: 'behavioral',
+    title: 'STAR 行为面试',
+    subtitle: '情境/任务/行动/结果，团队沟通与复杂冲突',
+    icon: Users,
+    color: 'border-purple-500/50 bg-purple-950/20 text-purple-300',
+  },
+  {
+    type: 'hr',
+    title: 'HR 综合素养面',
+    subtitle: '职业规划、稳定性、离职原因与企业文化契合',
+    icon: Users,
+    color: 'border-pink-500/50 bg-pink-950/20 text-pink-300',
+  },
+  {
+    type: 'management',
+    title: '管理岗 / 技术总监面',
+    subtitle: '团队梯队建设、技术战略、技术债务、研发效能',
+    icon: Briefcase,
+    color: 'border-amber-500/50 bg-amber-950/20 text-amber-300',
+  },
+  {
+    type: 'english',
+    title: '全球英语全真面',
+    subtitle: '100% English Global Mock, FAANG style',
+    icon: Globe,
+    color: 'border-emerald-500/50 bg-emerald-950/20 text-emerald-300',
+  },
+  {
+    type: 'custom',
+    title: '自选定制面试',
+    subtitle: '自由勾选面试官阵容，指定考查方向',
+    icon: Sliders,
+    color: 'border-indigo-500/50 bg-indigo-950/20 text-indigo-300',
+  },
+];
+
 export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoading }) => {
+  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // States
   const [resumeText, setResumeText] = useState(SAMPLE_RESUMES.backend);
   const [jdText, setJdText] = useState(SAMPLE_JDS.backend);
-  const [difficulty, setDifficulty] = useState('senior');
+  const [industry, setIndustry] = useState<IndustryType>('互联网/电商');
+  const [jobRole, setJobRole] = useState('资深后端开发');
+  const [seniority, setSeniority] = useState<SeniorityLevel>('senior');
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>('standard');
+  const [interviewType, setInterviewType] = useState<InterviewType>('structured');
   const [style, setStyle] = useState('rigorous');
   const [language, setLanguage] = useState('zh');
+
+  // Custom interview config
+  const [customSelectedInterviewers, setCustomSelectedInterviewers] = useState<string[]>([
+    'technical',
+    'hr',
+  ]);
+  const [customFocusTopics, setCustomFocusTopics] = useState('分布式锁, MySQL MVCC, Kafka异步解耦');
+
+  // Uploading status
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadSuccessName, setUploadSuccessName] = useState<string | null>(null);
+
+  // Saved user resumes
+  const [userResumes, setUserResumes] = useState<Array<{ id: string; filename: string; raw_text_preview: string }>>([]);
+
+  const customModel = loadLLMConfig()?.model;
+
+  // Load user profile defaults when available
+  useEffect(() => {
+    if (user?.profile) {
+      if (user.profile.target_industry && INDUSTRY_OPTIONS.includes(user.profile.target_industry as any)) {
+        setIndustry(user.profile.target_industry as IndustryType);
+      }
+      if (user.profile.target_role) {
+        setJobRole(user.profile.target_role);
+      }
+      if (user.profile.target_level) {
+        setSeniority(user.profile.target_level as SeniorityLevel);
+      }
+    }
+  }, [user]);
+
+  // Load saved resumes if user is logged in
+  useEffect(() => {
+    const fetchResumes = async () => {
+      const token = localStorage.getItem('interview_copilot_token');
+      if (!token) return;
+      try {
+        const res = await fetch('/api/v1/profiles/resumes', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUserResumes(data.resumes || []);
+        }
+      } catch (err) {
+        console.error('Failed to load user resumes:', err);
+      }
+    };
+    fetchResumes();
+  }, [user]);
+
+  // Handle English mode auto-switch
+  useEffect(() => {
+    if (interviewType === 'english') {
+      setLanguage('en');
+    } else if (language === 'en') {
+      setLanguage('zh');
+    }
+  }, [interviewType]);
+
+  // File Upload Handler
+  const handleFileUpload = async (file: File) => {
+    setIsUploading(true);
+    setUploadSuccessName(null);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('interview_copilot_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      const res = await fetch('/api/v1/profiles/upload-resume', {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || '简历解析失败');
+      }
+
+      const data = await res.json();
+      setResumeText(data.raw_text);
+      setUploadSuccessName(file.name);
+    } catch (err: any) {
+      alert(err.message || '上传并解析简历失败，请检查文件格式。');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onStartInterview({
       resumeText,
       jdText,
+      interviewType,
+      industry,
+      jobRole,
+      seniority,
       difficulty,
       style,
       language,
+      customConfig:
+        interviewType === 'custom'
+          ? {
+              selected_interviewers: customSelectedInterviewers,
+              focus_topics: customFocusTopics.split(',').map((t) => t.trim()),
+            }
+          : undefined,
     });
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
+    <div className="max-w-6xl mx-auto py-8 px-4">
       {/* Header */}
-      <div className="text-center max-w-2xl mx-auto mb-8">
+      <div className="text-center max-w-3xl mx-auto mb-8">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-900/30 border border-blue-700/40 text-blue-400 text-xs font-medium mb-3">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>场景准备与个性化定制</span>
+          <span>全真智能模拟面试系统</span>
         </div>
         <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">
           配置你的全真多 Agent 模拟面试
         </h1>
         <p className="mt-3 text-sm text-gray-400 leading-relaxed">
-          输入你的简历与求职目标岗位，面试团将自适应生成量身定制的深度考察方案，
-          模拟主考官、技术专家、HR和压力挑战官的协同问答。
+          支持上传真实简历文件、挑选行业与细分岗位、任选 7 大面试类型与多模态交互，全周期生成诊断报告与 7 天冲刺计划。
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Step 1: Choose Interview Type */}
+        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <Layers className="w-4 h-4 text-blue-400" />
+            <h3 className="text-sm font-semibold text-white">
+              步骤 1：选择面试类型 (Interview Type)
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {INTERVIEW_TYPE_OPTIONS.map((item) => {
+              const Icon = item.icon;
+              const isSelected = interviewType === item.type;
+              return (
+                <div
+                  key={item.type}
+                  onClick={() => setInterviewType(item.type)}
+                  className={`cursor-pointer rounded-2xl p-4 border transition-all relative overflow-hidden flex flex-col justify-between ${
+                    isSelected
+                      ? `bg-gray-800/90 border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/10`
+                      : 'bg-gray-950/60 border-gray-800/80 hover:border-gray-700'
+                  }`}
+                >
+                  <div className="flex items-start space-x-3 mb-2">
+                    <div
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${item.color}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-gray-100">{item.title}</div>
+                      <div className="text-[11px] text-gray-400 mt-1 leading-snug">
+                        {item.subtitle}
+                      </div>
+                    </div>
+                  </div>
+                  {isSelected && (
+                    <div className="self-end mt-1 text-[10px] font-semibold text-blue-400 flex items-center space-x-1">
+                      <CheckCircle className="w-3.5 h-3.5 text-blue-400" />
+                      <span>已选定</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Custom Interview Configuration Panel */}
+          {interviewType === 'custom' && (
+            <div className="mt-4 p-4 rounded-2xl bg-gray-950/80 border border-indigo-500/40 space-y-3 animate-fadeIn">
+              <div className="text-xs font-semibold text-indigo-300 flex items-center space-x-2">
+                <Sliders className="w-3.5 h-3.5" />
+                <span>自定义面试阵容与考察重心</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">
+                    指定出场面试官 (可多选)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'technical', label: '技术专家' },
+                      { key: 'hr', label: 'HR/行为官' },
+                      { key: 'management', label: '管理岗专家' },
+                      { key: 'challenger', label: '压力挑战官' },
+                    ].map((role) => {
+                      const active = customSelectedInterviewers.includes(role.key);
+                      return (
+                        <button
+                          key={role.key}
+                          type="button"
+                          onClick={() => {
+                            if (active) {
+                              if (customSelectedInterviewers.length > 1) {
+                                setCustomSelectedInterviewers(
+                                  customSelectedInterviewers.filter((k) => k !== role.key)
+                                );
+                              }
+                            } else {
+                              setCustomSelectedInterviewers([
+                                ...customSelectedInterviewers,
+                                role.key,
+                              ]);
+                            }
+                          }}
+                          className={`text-xs px-3 py-1.5 rounded-lg border transition ${
+                            active
+                              ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200'
+                              : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200'
+                          }`}
+                        >
+                          {role.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">
+                    定向考察知识点 (逗号分隔)
+                  </label>
+                  <input
+                    type="text"
+                    value={customFocusTopics}
+                    onChange={(e) => setCustomFocusTopics(e.target.value)}
+                    placeholder="如：Redis分布式锁, Kafka事务, 双写一致性"
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-200 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Step 2: Industry, Role, Seniority, Difficulty */}
+        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <Briefcase className="w-4 h-4 text-indigo-400" />
+            <h3 className="text-sm font-semibold text-white">
+              步骤 2：选择行业、岗位、职级与难度
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Industry */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5 font-medium">目标行业</label>
+              <select
+                value={industry}
+                onChange={(e) => {
+                  const newInd = e.target.value as IndustryType;
+                  setIndustry(newInd);
+                  if (PRESET_ROLES[newInd] && PRESET_ROLES[newInd].length > 0) {
+                    setJobRole(PRESET_ROLES[newInd][0]);
+                  }
+                }}
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+              >
+                {INDUSTRY_OPTIONS.map((ind) => (
+                  <option key={ind} value={ind}>
+                    {ind}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Role */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5 font-medium">
+                求职岗位 (支持自定义)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={jobRole}
+                  onChange={(e) => setJobRole(e.target.value)}
+                  placeholder="例如：后端开发架构师"
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {PRESET_ROLES[industry]?.slice(0, 3).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setJobRole(r)}
+                    className="text-[10px] text-gray-400 hover:text-blue-300 underline"
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Seniority */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5 font-medium">考核职级</label>
+              <select
+                value={seniority}
+                onChange={(e) => setSeniority(e.target.value as SeniorityLevel)}
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="intern">校招新人 / 实习生 (夯实基础与语法规范)</option>
+                <option value="junior">初级工程师 (1-3年，注重项目实操与排错)</option>
+                <option value="senior">社招资深研发 (3-5年，高可用与架构设计)</option>
+                <option value="expert">架构师 / 技术专家 (5-10年，高并发与技术选型)</option>
+                <option value="director">技术总监 / 管理岗 (10年+，团队战略与研发效能)</option>
+              </select>
+            </div>
+
+            {/* Difficulty */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5 font-medium">面试难度</label>
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value as DifficultyLevel)}
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="easy">基础巩固 (侧重基础语法与常规场景)</option>
+                <option value="standard">标准大厂 (真实业务复杂系统设计与场景追问)</option>
+                <option value="hard">专家地狱 (底层源码、极端崩溃故障与边界取舍)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 3: Resume Upload & JD Input */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Resume Box */}
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-5 flex flex-col">
+          <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-blue-400" />
                 <label className="text-sm font-semibold text-gray-200">
-                  候选人简历 (Resume)
+                  候选人简历 (支持 PDF/Word/TXT 上传)
                 </label>
               </div>
+
               <div className="flex items-center space-x-1.5">
                 <button
                   type="button"
                   onClick={() => setResumeText(SAMPLE_RESUMES.backend)}
                   className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
                 >
-                  后端示例
+                  后端
                 </button>
                 <button
                   type="button"
                   onClick={() => setResumeText(SAMPLE_RESUMES.ai_engineer)}
                   className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
                 >
-                  AI工程示例
+                  AI工程
                 </button>
                 <button
                   type="button"
-                  onClick={() => setResumeText('')}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800/60 hover:bg-red-900/40 text-gray-400 hover:text-red-300 transition"
+                  onClick={() => setResumeText(SAMPLE_RESUMES.management)}
+                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
                 >
-                  清空
+                  管理岗
                 </button>
               </div>
             </div>
+
+            {/* Saved Resumes Selector */}
+            {userResumes.length > 0 && (
+              <div className="mb-3">
+                <select
+                  onChange={(e) => {
+                    const found = userResumes.find((r) => r.id === e.target.value);
+                    if (found) setResumeText(found.raw_text_preview);
+                  }}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">-- 选择已保存的历史简历 --</option>
+                  {userResumes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.filename}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Drag & Drop File Upload Area */}
+            <div
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className="mb-3 border-2 border-dashed border-gray-800 hover:border-blue-500/60 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer bg-gray-950/40 hover:bg-blue-950/10 transition group"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt,.md"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleFileUpload(e.target.files[0]);
+                  }
+                }}
+              />
+              {isUploading ? (
+                <div className="flex items-center space-x-2 text-xs text-blue-400 py-1">
+                  <div className="w-4 h-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                  <span>正在解析简历并提取候选人画像...</span>
+                </div>
+              ) : uploadSuccessName ? (
+                <div className="flex items-center space-x-2 text-xs text-emerald-400">
+                  <FileCheck className="w-4 h-4" />
+                  <span>已成功提取：{uploadSuccessName}</span>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 text-xs text-gray-400 group-hover:text-blue-400 transition">
+                  <Upload className="w-4 h-4 text-gray-500 group-hover:text-blue-400" />
+                  <span>拖拽或点击上传本地简历 (支持 PDF, Word, TXT)</span>
+                </div>
+              )}
+            </div>
+
             <textarea
               value={resumeText}
               onChange={(e) => setResumeText(e.target.value)}
-              placeholder="在此粘贴个人简历文本（包含教育背景、核心技能栈、关键项目经历与成就量化指标）..."
-              rows={12}
-              className="w-full bg-gray-950/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono resize-none leading-relaxed flex-1"
+              placeholder="在此粘贴或上传个人简历文本..."
+              rows={10}
+              className="w-full bg-gray-950/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 font-mono resize-none leading-relaxed flex-1"
               required
             />
-            <p className="text-[11px] text-gray-500 mt-2">
-              💡 提示：技术面试官将针对简历中所列项目与技术选型进行层层深挖追问。
-            </p>
           </div>
 
           {/* JD Box */}
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-5 flex flex-col">
+          <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-2">
                 <Briefcase className="w-4 h-4 text-indigo-400" />
@@ -157,116 +664,105 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
                   onClick={() => setJdText(SAMPLE_JDS.backend)}
                   className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
                 >
-                  架构师JD
+                  后端JD
                 </button>
                 <button
                   type="button"
                   onClick={() => setJdText(SAMPLE_JDS.ai_engineer)}
                   className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
                 >
-                  Agent专家JD
+                  AgentJD
                 </button>
                 <button
                   type="button"
-                  onClick={() => setJdText('')}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800/60 hover:bg-red-900/40 text-gray-400 hover:text-red-300 transition"
+                  onClick={() => setJdText(SAMPLE_JDS.management)}
+                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
                 >
-                  清空
+                  管理JD
                 </button>
               </div>
             </div>
+
             <textarea
               value={jdText}
               onChange={(e) => setJdText(e.target.value)}
               placeholder="在此粘贴企业招聘 JD（包含职责描述、硬性技能要求、软性要求）..."
-              rows={12}
-              className="w-full bg-gray-950/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono resize-none leading-relaxed flex-1"
+              rows={14}
+              className="w-full bg-gray-950/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 font-mono resize-none leading-relaxed flex-1"
               required
             />
             <p className="text-[11px] text-gray-500 mt-2">
-              💡 提示：系统将自动提炼岗位的核心能力要求，对齐面试提问与雷达评估维度。
+              💡 提示：AI 影子观察员将根据目标岗位职责实时核对候选人回答的契合度。
             </p>
           </div>
         </div>
 
         {/* Mode and Style Settings */}
-        <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-5">
+        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5">
           <div className="flex items-center space-x-2 mb-4">
             <Settings2 className="w-4 h-4 text-emerald-400" />
             <span className="text-sm font-semibold text-gray-200">
-              面试模式与风格定制 (Interview Preferences)
+              面试官风格与偏好 (Preferences)
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Seniority */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-                考核职级 (Level)
-              </label>
-              <select
-                value={difficulty}
-                onChange={(e) => setDifficulty(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
-              >
-                <option value="junior">校招 / 初级研发 (夯实基础与语法)</option>
-                <option value="senior">社招 / 资深研发 (高可用与深度原理)</option>
-                <option value="expert">专家 / 架构管理层 (技术战略与业务大局)</option>
-              </select>
-            </div>
-
-            {/* Style */}
-            <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-                面试官风格 (Style)
-              </label>
+              <label className="block text-xs text-gray-400 mb-1.5 font-medium">面试官风格</label>
               <select
                 value={style}
                 onChange={(e) => setStyle(e.target.value)}
                 className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
               >
-                <option value="gentle">温和鼓励型 (耐心引导，注重发挥)</option>
-                <option value="rigorous">严谨批判型 (关注逻辑漏洞与边界)</option>
-                <option value="stress">快节奏高压型 (激活压力挑战官，极限考察)</option>
+                <option value="gentle">温和鼓励型 (循循善诱，注重思路引导)</option>
+                <option value="rigorous">严谨批判型 (探究逻辑自洽与系统边界)</option>
+                <option value="stress">快节奏高压型 (激活挑战官，极限故障施压)</option>
               </select>
             </div>
 
-            {/* Language */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-                语言模式 (Language)
-              </label>
+              <label className="block text-xs text-gray-400 mb-1.5 font-medium">语言模式</label>
               <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
                 className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
               >
-                <option value="zh">全中文面试 (标准普通话)</option>
-                <option value="en">全英文面试 (English Global Mock)</option>
+                <option value="zh">全中文普通话交流</option>
+                <option value="en">全英文交流 (English Mock Interview)</option>
               </select>
             </div>
           </div>
         </div>
 
         {/* Start Button */}
-        <div className="flex justify-center pt-2">
+        <div className="flex flex-col items-center gap-3 pt-2">
           <button
             type="submit"
-            disabled={isLoading}
-            className="group relative inline-flex items-center space-x-3 px-8 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-500/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={isLoading || isUploading}
+            className="group relative inline-flex items-center space-x-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-xl shadow-blue-500/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>正在解析简历并召集 AI 面试官...</span>
+                <span>正在根据岗位定制考题并召集面试团...</span>
               </>
             ) : (
               <>
-                <span>进入全真多 Agent 模拟面试房间</span>
+                <span>开启全真多 Agent 模拟面试</span>
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </>
             )}
           </button>
+          <p className="flex items-center space-x-1.5 text-[11px] text-gray-500">
+            <Cpu className="w-3 h-3" />
+            {customModel ? (
+              <span>
+                本次面试将使用前端自定义模型 <span className="text-blue-400 font-medium">{customModel}</span>
+              </span>
+            ) : (
+              <span>使用后端默认大模型配置（可在右上角「模型配置」随时切换）</span>
+            )}
+          </p>
         </div>
       </form>
     </div>

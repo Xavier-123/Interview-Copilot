@@ -1,15 +1,25 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.models.db import init_db
+from app.api.v1.auth import router as auth_router
 from app.api.v1.interviews import router as interviews_router
 from app.api.v1.profiles import router as profiles_router
 from app.api.ws.interview_stream import router as ws_router
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Auto-initialize SQLite database tables on startup
+    await init_db()
+    yield
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Interview-Copilot: Multi-Agent AI Mock Interview Platform Backend",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
 )
 
 # Setup CORS
@@ -22,6 +32,7 @@ app.add_middleware(
 )
 
 # Register Routers
+app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(interviews_router, prefix=settings.API_V1_STR)
 app.include_router(profiles_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix="/api")

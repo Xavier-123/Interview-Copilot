@@ -11,7 +11,7 @@ class LLMService:
     def __init__(self):
         self._client: Optional[ChatOpenAI] = None
         self._is_mock = settings.ENABLE_MOCK_MODE or settings.LLM_API_KEY in ("mock-key", "", "your_api_key_here")
-        
+
         if not self._is_mock:
             try:
                 self._client = ChatOpenAI(
@@ -24,13 +24,56 @@ class LLMService:
                 logger.warning(f"Failed to initialize ChatOpenAI: {e}. Falling back to mock mode.")
                 self._is_mock = True
 
-    async def invoke(self, messages: List[BaseMessage]) -> AIMessage:
+        # Client cache for per-request (frontend-provided) LLM configs
+        self._custom_clients: Dict[tuple, ChatOpenAI] = {}
+
+    @staticmethod
+    def _valid_custom_config(llm_config: Optional[Dict[str, Any]]) -> bool:
+        if not isinstance(llm_config, dict):
+            return False
+        api_key = str(llm_config.get("api_key") or "").strip()
+        return bool(api_key) and api_key not in ("mock-key", "your_api_key_here")
+
+    def _get_custom_client(self, llm_config: Dict[str, Any]) -> Optional[ChatOpenAI]:
+        model = str(llm_config.get("model") or settings.LLM_MODEL)
+        api_key = str(llm_config.get("api_key")).strip()
+        base_url = str(llm_config.get("base_url") or "").strip() or None
+        try:
+            temperature = float(llm_config.get("temperature", settings.LLM_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = settings.LLM_TEMPERATURE
+
+        cache_key = (api_key, base_url, model, temperature)
+        if cache_key not in self._custom_clients:
+            try:
+                self._custom_clients[cache_key] = ChatOpenAI(
+                    model=model,
+                    api_key=api_key,
+                    base_url=base_url,
+                    temperature=temperature,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize custom ChatOpenAI: {e}. Falling back to default config.")
+                return None
+        return self._custom_clients[cache_key]
+
+    async def invoke(self, messages: List[BaseMessage], llm_config: Optional[Dict[str, Any]] = None) -> AIMessage:
+        # Frontend-provided config takes precedence over backend settings
+        if self._valid_custom_config(llm_config):
+            client = self._get_custom_client(llm_config)
+            if client:
+                try:
+                    return await client.ainvoke(messages)
+                except Exception as e:
+                    logger.error(f"Custom-config LLM call failed: {e}. Falling back to dynamic mock response.")
+                    return AIMessage(content=self._generate_mock_reply(messages))
+
         if not self._is_mock and self._client:
             try:
                 return await self._client.ainvoke(messages)
             except Exception as e:
                 logger.error(f"Live LLM call failed: {e}. Falling back to dynamic mock response.")
-        
+
         # Intelligent dynamic mock response
         return AIMessage(content=self._generate_mock_reply(messages))
 
@@ -129,14 +172,61 @@ class LLMService:
                             "精读分布式事务最终一致性白皮书",
                             "搭建 Canal + Redis 增量同步实验环境并进行并发破坏性测试"
                         ]
+                    }
+                ],
+                "seven_day_roadmap": [
+                    {
+                        "day": "Day 1-2",
+                        "phase": "核心理论与底层原理漏洞补齐",
+                        "focus_topics": ["分布式事务与最终一致性", "MySQL MVCC 与锁竞争机制"],
+                        "action_items": [
+                            "研读 Canal + RocketMQ 增量事务消息机制并画出时序图",
+                            "复习 ReadView 与 UndoLog 链条生成逻辑"
+                        ],
+                        "expected_outcome": "能够完整推演网络分区下的一致性兜底方案"
                     },
                     {
-                        "topic": "STAR原则高阶沟通与量化复盘法",
-                        "reason": "行为面试部分缺乏具体的行动与量化指标",
-                        "recommended_actions": [
-                            "梳理过往3个核心项目的 S-T-A-R 结构卡片",
-                            "训练每个成果带出具体百分比或业务指标（如延迟、成本、人效）"
-                        ]
+                        "day": "Day 3-4",
+                        "phase": "高并发系统设计与极限边界攻坚",
+                        "focus_topics": ["极端限流与熔断降级", "多级缓存一致性对账"],
+                        "action_items": [
+                            "设计万级 QPS 秒杀风控漏斗模型，标注各级过滤比例",
+                            "产出系统架构权衡 Trade-off 决策清单"
+                        ],
+                        "expected_outcome": "回答架构设计题具备全局指标量化与容灾意识"
+                    },
+                    {
+                        "day": "Day 5-6",
+                        "phase": "STAR 法则情境表达与量化复盘刻意练习",
+                        "focus_topics": ["STAR 四步表达法", "冲突化解与向上管理"],
+                        "action_items": [
+                            "将主导的2个核心项目重构为标准的 S-T-A-R 结构卡片",
+                            "提炼出明确的量化成果指标"
+                        ],
+                        "expected_outcome": "行为面试回答紧凑有力、数据详实"
+                    },
+                    {
+                        "day": "Day 7",
+                        "phase": "全真模拟与冲刺复测",
+                        "focus_topics": ["同类型同岗位二次模拟测试"],
+                        "action_items": ["在本平台重新发起一场全真模拟面试并对比雷达变化"],
+                        "expected_outcome": "六维雷达综合评分达到8.5分以上"
+                    }
+                ],
+                "drill_cards": [
+                    {
+                        "id": "drill_1",
+                        "weakness_title": "专项打靶：分布式锁续期与并发安全",
+                        "concept_summary": "Redisson 看门狗租期续期机制，结合 Fencing Token 解决长 GC 踩踏问题。",
+                        "interview_tips": "回答主动说明死锁防范与业务超时自动释放的权衡。",
+                        "sample_drill_question": "如果客户端获取分布式锁后发生长达40秒的 Full GC，锁已被服务端超时释放并被新请求获取，如何避免并发脏写？"
+                    },
+                    {
+                        "id": "drill_2",
+                        "weakness_title": "专项打靶：STAR成果量化表达",
+                        "concept_summary": "行为面试强调个人具体担当与可衡量的业务增量（QPS/时延/成本）。",
+                        "interview_tips": "使用固定句式：情境约束 -> 关键行动 -> 最终量化指标。",
+                        "sample_drill_question": "请分享一次在需求排期严重不足的情况下，你如何与业务方对齐优先级并保质上线的经历？"
                     }
                 ]
             }, ensure_ascii=False)
@@ -144,6 +234,8 @@ class LLMService:
         # 4. Check if it's Shadow Observer
         if "影子观察员" in system_prompt or "Shadow Evaluator" in system_prompt or "影子观察员" in user_prompt:
             return json.dumps({
+                "topic": "高并发缓存与数据一致性",
+                "satisfaction_score": 0.85,
                 "strengths": [
                     "表述条理较清晰，准确切中了核心概念",
                     "展现了一定的项目实战经验与架构选型意识"
@@ -152,28 +244,37 @@ class LLMService:
                     "缺乏足够的业务量化数据支撑（如QPS/延迟降幅）",
                     "对极端异常场景与边界容灾考虑略显不足"
                 ],
-                "depth_score": 7.8,
-                "logic_score": 8.0,
-                "star_compliance": 7.2,
+                "follow_up_hint": "针对方案在极端网络超时下的数据补偿机制进行深挖",
+                "key_claim": "候选人陈述了使用分布式锁防击穿和Canal保证一致性的方案",
+                "depth_score": 8.0,
+                "logic_score": 8.2,
+                "star_compliance": 7.5,
                 "flags": ["solid_basis", "needs_more_metrics"]
             }, ensure_ascii=False)
 
-        # 5. Check if it's Technical Specialist
+        # 5. Check if it's Management Specialist
+        if "管理岗与技术战略面试官" in system_prompt or "Management" in system_prompt or "管理岗" in system_prompt:
+            return "了解了你的技术背景。作为技术团队核心或架构管理岗，不仅要关注工程实现，还需要平衡团队效能与研发交付价值。请聊聊在团队面对紧急重大业务交付与历史技术债务（如老旧单体服务架构臃肿）的冲突时，你通常如何制定演进路线图并向上汇报争取资源？"
+
+        # 6. Check if it's Technical Specialist
         if "专业技术面试官" in system_prompt or "Technical Specialist" in system_prompt:
             return "很好，了解了你的背景。你在简历中提到了核心系统高可用架构的实践，请具体聊聊在流量洪峰来临时，你们是如何设计多级缓存架构与防雪崩机制的？在一致性要求极高的场景下，你如何权衡性能与数据准确性？"
 
-        # 6. Check if it's HR Specialist
+        # 7. Check if it's HR Specialist
         if "行为与文化面试官" in system_prompt or "Behavioral" in system_prompt:
             return "谢谢你的技术分享。在过往的项目经历中，肯定会遇到跨团队协同或需求交付时间非常紧迫的挑战。能否请你分享一个最让你印象深刻的、在巨大压力或资源匮乏下推动项目拿到超预期结果的真实案例？请按照当时的情境、你承担的关键行动和最终成效展开聊聊。"
 
-        # 7. Check if it's Challenger
+        # 8. Check if it's Challenger
         if "压力/挑战面试官" in system_prompt or "Challenger" in system_prompt:
             return "你刚才给出的方案在理想网络环境下确实可行。但是，假设当前机房发生跨可用区光缆抖动，网络分区导致分布式锁心跳超时，而此时又有大量并发写入请求涌入，你这个方案还能保证不出现脏数据覆盖吗？如果必须牺牲一项指标，你先牺牲什么？"
 
-        # 8. Default to Orchestrator
+        # 9. Default to Orchestrator
         if "self_intro" in user_prompt or "自我介绍" in user_prompt:
-            return "非常感谢你的详细介绍！我们对你过往的技术经历已经有了初步了解。接下来，请我们的【技术面试官】针对核心系统设计和专业领域与你展开深入探讨。"
-        
-        return "你好！欢迎参加今天的模拟面试。我是本次面试的主考官。今天我们安排了技术专家和HR面试官共同参与，整个过程包含背景介绍、技术深挖、行为考察以及最后的答疑环节。请先做一个1-2分钟的简要自我介绍，重点聊聊你的核心技能与最有挑战的项目经历。"
+            return "非常感谢你的详细介绍！我们对你过往的技术经历已经有了初步了解。接下来，请我们的面试官团队针对核心专业领域与你展开深入探讨。"
+
+        if "language: en" in system_prompt or "语言: en" in system_prompt or "en" in user_prompt:
+            return "Hello and welcome to this simulated interview session! I am your lead interviewer. We have gathered a committee to evaluate your technical, architectural, and behavioral competencies. To begin, please introduce yourself concisely."
+
+        return "你好！欢迎参加今天的模拟面试。我是本次面试的主考官。今天我们安排了专业面试官共同参与，整个过程包含背景介绍、深度考核、行为考察以及最后的答疑环节。请先做一个1-2分钟的简要自我介绍，重点聊聊你的核心技能与最有挑战的项目经历。"
 
 llm_service = LLMService()

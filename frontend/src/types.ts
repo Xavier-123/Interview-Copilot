@@ -1,8 +1,45 @@
-export type InterviewerType = 'orchestrator' | 'technical' | 'hr' | 'challenger' | 'observer';
+export type InterviewerType =
+  | 'orchestrator'
+  | 'technical'
+  | 'hr'
+  | 'challenger'
+  | 'observer'
+  | 'management';
+
+export type InterviewType =
+  | 'technical'
+  | 'behavioral'
+  | 'hr'
+  | 'management'
+  | 'english'
+  | 'structured'
+  | 'custom';
+
+export type IndustryType =
+  | '互联网/电商'
+  | '人工智能/大模型'
+  | '金融科技/量化'
+  | '智能制造/自动驾驶'
+  | '企业服务/SaaS'
+  | '游戏开发'
+  | '医疗健康/生物医药'
+  | '通用行业';
+
+export type SeniorityLevel = 'intern' | 'junior' | 'senior' | 'expert' | 'director';
+export type DifficultyLevel = 'easy' | 'standard' | 'hard';
+export type InterviewStyle = 'gentle' | 'rigorous' | 'stress';
+export type InterviewLanguage = 'zh' | 'en';
+
+export interface LLMConfig {
+  base_url: string;
+  api_key: string;
+  model: string;
+  temperature?: number;
+}
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
-  name?: 'orchestrator' | 'technical' | 'hr' | 'challenger' | 'candidate';
+  name?: 'orchestrator' | 'technical' | 'hr' | 'challenger' | 'management' | 'candidate';
   content: string;
   stage?: string;
   timestamp?: string;
@@ -19,6 +56,7 @@ export interface ShadowObservation {
   logic_score: number;
   star_compliance?: number | null;
   flags: string[];
+  follow_up_hint?: string;
 }
 
 export interface RadarScores {
@@ -46,6 +84,22 @@ export interface LearningPlanItem {
   recommended_actions: string[];
 }
 
+export interface SevenDayRoadmapItem {
+  day: string;
+  phase: string;
+  focus_topics: string[];
+  action_items: string[];
+  expected_outcome: string;
+}
+
+export interface DrillCardItem {
+  id: string;
+  weakness_title: string;
+  concept_summary: string;
+  interview_tips: string;
+  sample_drill_question: string;
+}
+
 export interface EvaluationReport {
   overall_summary: string;
   match_verdict: string;
@@ -54,6 +108,8 @@ export interface EvaluationReport {
   weaknesses: string[];
   detailed_reviews: DetailedReview[];
   learning_plan: LearningPlanItem[];
+  seven_day_roadmap?: SevenDayRoadmapItem[];
+  drill_cards?: DrillCardItem[];
 }
 
 export interface CandidateProfile {
@@ -79,16 +135,67 @@ export interface JDRequirements {
   interview_focus?: string[];
 }
 
-export interface InterviewSession {
+export interface UserProfileData {
+  real_name: string;
+  target_role: string;
+  target_industry: string;
+  target_level: string;
+  experience_years: number;
+  skills: string[];
+  bio: string;
+}
+
+export interface UserData {
+  id: string;
+  username: string;
+  email?: string;
+  is_guest: boolean;
+  profile?: UserProfileData;
+}
+
+export interface HistorySessionItem {
   session_id: string;
-  user_id: string;
-  stage: string;
-  current_interviewer: string;
+  title: string;
+  interview_type: string;
+  industry: string;
+  job_role: string;
+  seniority: string;
+  difficulty: string;
+  status: 'ready' | 'in_progress' | 'waiting_user' | 'paused' | 'finished';
   round_count: number;
-  max_rounds: number;
-  candidate_profile: CandidateProfile;
-  jd_requirements: JDRequirements;
-  messages: Message[];
-  status: 'ready' | 'in_progress' | 'waiting_user' | 'finished';
-  lifelines_used: number;
+  elapsed_seconds: number;
+  created_at: string;
+  has_report: boolean;
+  match_verdict?: string;
+  overall_summary?: string;
+  radar_scores?: RadarScores;
+}
+
+export interface RadarComparisonItem {
+  dimension: string;
+  dimension_key: string;
+  session_1_score: number;
+  session_2_score: number;
+  delta: number;
+}
+
+export interface ComparisonResult {
+  session_1: {
+    session_id: string;
+    title: string;
+    match_verdict: string;
+    radar_scores: RadarScores;
+    weaknesses: string[];
+  };
+  session_2: {
+    session_id: string;
+    title: string;
+    match_verdict: string;
+    radar_scores: RadarScores;
+    weaknesses: string[];
+  };
+  radar_comparison: RadarComparisonItem[];
+  deltas: Record<string, number>;
+  overall_improvement: number;
+  summary: string;
 }

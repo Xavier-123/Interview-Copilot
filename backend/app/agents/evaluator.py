@@ -11,9 +11,10 @@ logger = logging.getLogger(__name__)
 async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
     """
     Synthesizes interview transcript and shadow observation logs into a deep diagnostic report:
-    - 5D/6D Radar Scores
+    - 6D Radar Scores
     - Question-by-question review & Answer Rewriting (Before vs. After optimization)
-    - Targeted study and improvement roadmap
+    - 7-Day Targeted Training Roadmap
+    - Interactive Drill Flashcards for immediate practice
     """
     candidate_profile = state.get("candidate_profile", {})
     jd_requirements = state.get("jd_requirements", {})
@@ -34,17 +35,27 @@ async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
         shadow_logs=json.dumps(shadow_logs, ensure_ascii=False, indent=2)
     )
 
-    prompt = "请根据上述问答纪录和影子观察员日志，全面生成候选人的多维评估与复盘诊断报告，以 JSON 格式输出。"
+    prompt = "请根据上述问答纪录和影子观察员日志，全面生成候选人的多维评估与复盘诊断报告，以合法 JSON 格式输出。"
 
     try:
-        resp = await llm_service.invoke([SystemMessage(content=sys_msg), HumanMessage(content=prompt)])
+        resp = await llm_service.invoke(
+            [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
+            llm_config=state.get("llm_config")
+        )
         content = resp.content.strip()
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
-        
+
         parsed_report = json.loads(content)
+
+        # Ensure seven_day_roadmap and drill_cards are present
+        if "seven_day_roadmap" not in parsed_report or not parsed_report["seven_day_roadmap"]:
+            parsed_report["seven_day_roadmap"] = _get_default_roadmap()
+        if "drill_cards" not in parsed_report or not parsed_report["drill_cards"]:
+            parsed_report["drill_cards"] = _get_default_drill_cards(parsed_report.get("weaknesses", []))
+
         return parsed_report
     except Exception as e:
         logger.error(f"Failed to parse LLM evaluation report: {e}. Generating fallback structured report.")
@@ -88,5 +99,75 @@ async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
                         "动手实验缓存穿透/雪崩压测与降级演练"
                     ]
                 }
-            ]
+            ],
+            "seven_day_roadmap": _get_default_roadmap(),
+            "drill_cards": _get_default_drill_cards([
+                "项目阐述中缺乏明确的量化指标支撑",
+                "对分布式系统极端故障场景下的容灾补偿思考略显单薄"
+            ])
         }
+
+def _get_default_roadmap():
+    return [
+        {
+            "day": "Day 1-2",
+            "phase": "核心理论与底层原理漏洞补齐",
+            "focus_topics": ["分布式事务与最终一致性", "MySQL MVCC 与锁竞争机制"],
+            "action_items": [
+                "研读 Canal + RocketMQ 增量事务消息机制并画出时序图",
+                "复习 ReadView 与 UndoLog 链条生成逻辑，攻克高并发脏读细节"
+            ],
+            "expected_outcome": "能够完整推演网络分区下的一致性兜底方案"
+        },
+        {
+            "day": "Day 3-4",
+            "phase": "高并发系统设计与极限边界攻坚",
+            "focus_topics": ["极端限流与熔断降级", "多级缓存一致性对账"],
+            "action_items": [
+                "设计万级 QPS 秒杀风控漏斗模型，标注各级过滤比例",
+                "产出系统架构权衡 Trade-off 决策清单"
+            ],
+            "expected_outcome": "回答架构设计题具备全局指标量化与容灾意识"
+        },
+        {
+            "day": "Day 5-6",
+            "phase": "STAR 法则情境表达与量化复盘刻意练习",
+            "focus_topics": ["STAR 四步表达法", "冲突化解与向上管理"],
+            "action_items": [
+                "将主导的2个核心项目重构为标准的 S-T-A-R 结构卡片",
+                "提炼出明确的量化成果指标（如延迟降低40%、故障率压降至0.01%）"
+            ],
+            "expected_outcome": "行为面试回答紧凑有力、数据详实"
+        },
+        {
+            "day": "Day 7",
+            "phase": "全真模拟与冲刺复测",
+            "focus_topics": ["同类型同岗位二次模拟测试"],
+            "action_items": [
+                "在本平台重新发起一场全真模拟面试并对比雷达变化"
+            ],
+            "expected_outcome": "六维雷达综合评分达到8.5分以上"
+        }
+    ]
+
+def _get_default_drill_cards(weaknesses):
+    cards = []
+    card_id = 1
+    for w in weaknesses[:3]:
+        cards.append({
+            "id": f"drill_{card_id}",
+            "weakness_title": f"专项打靶：{w[:20]}",
+            "concept_summary": f"针对【{w}】，关键在于掌握核心底层机制、业务取舍（Trade-off）以及数据指标量化证明。",
+            "interview_tips": "面试作答时牢记黄金公式：情境约束 -> 方案选型与对比 -> 异常防御 -> 真实量化成果。",
+            "sample_drill_question": f"针对你刚才提到的弱项‘{w[:15]}...’，如果重新给一次机会，你在设计之初会如何通过架构手段彻底防范？"
+        })
+        card_id += 1
+    if not cards:
+        cards.append({
+            "id": "drill_1",
+            "weakness_title": "专项打靶：分布式一致性与容灾对账",
+            "concept_summary": "利用 Canal 监听 Binlog 投递 MQ 异步更新缓存，结合 TCC 或对账定时任务做最终兜底。",
+            "interview_tips": "强调异步双删不可靠的极端边界，展现成熟的大厂工程认知。",
+            "sample_drill_question": "在跨机房网络延迟严重抖动时，如何保证 MySQL 与 Redis 之间数据不会产生永久性脏数据？"
+        })
+    return cards

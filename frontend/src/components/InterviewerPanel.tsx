@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserCheck, Code2, Users2, Zap, Eye, Radio } from 'lucide-react';
+import { UserCheck, Code2, Users2, Zap, Eye, Radio, Briefcase } from 'lucide-react';
 
 interface InterviewerPanelProps {
   currentInterviewer: string;
@@ -41,6 +41,15 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
       desc: 'STAR法则、跨团队协同、自驱力与危机应对',
     },
     {
+      id: 'management',
+      name: '赵管理',
+      role: '管理岗专家 (Leadership & Strategy)',
+      icon: Briefcase,
+      color: 'from-emerald-500 to-green-600',
+      activeBorder: 'border-emerald-500 shadow-emerald-500/20',
+      desc: '团队梯队、技术战略演进、技术债务治理与效能',
+    },
+    {
       id: 'challenger',
       name: '张挑刺',
       role: '高压/极限挑战官 (Challenger)',
@@ -66,12 +75,12 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
           <Eye className="w-3.5 h-3.5 text-indigo-400" />
           <span>影子观察员:</span>
           <span className="text-indigo-300 font-medium font-mono">
-            {shadowLogsCount} 轮观察记录中
+            {shadowLogsCount} 轮实时监听评估中
           </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         {interviewers.map((agent) => {
           const isActive = currentInterviewer === agent.id;
           const IconComponent = agent.icon;
@@ -79,7 +88,7 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
           return (
             <div
               key={agent.id}
-              className={`relative rounded-xl p-3 border transition-all duration-300 ${
+              className={`relative rounded-xl p-2.5 border transition-all duration-300 ${
                 isActive
                   ? `bg-gray-800/90 border-2 ${agent.activeBorder} shadow-lg scale-[1.02]`
                   : 'bg-gray-950/40 border-gray-800/80 opacity-70 hover:opacity-90'
@@ -91,27 +100,28 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
                 </div>
               )}
 
-              <div className="flex items-start space-x-3">
+              <div className="flex items-start space-x-2.5">
                 <div
-                  className={`w-10 h-10 rounded-xl bg-gradient-to-br ${agent.color} flex items-center justify-center shrink-0 shadow-md`}
+                  className={`w-8 h-8 rounded-lg bg-gradient-to-br ${agent.color} flex items-center justify-center shrink-0 shadow-md`}
                 >
-                  <IconComponent className="w-5 h-5 text-white" />
+                  <IconComponent className="w-4 h-4 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-100">{agent.name}</span>
+                    <span className="text-xs font-bold text-gray-100">{agent.name}</span>
                     {isActive && isThinking && (
-                      <span className="text-[11px] text-blue-400 animate-pulse">思考中...</span>
+                      <span className="text-[10px] text-blue-400 animate-pulse font-mono">
+                        思考中...
+                      </span>
                     )}
                   </div>
-                  <p className="text-[11px] font-medium text-gray-400 truncate mt-0.5">
-                    {agent.role}
-                  </p>
-                  <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-tight">
-                    {agent.desc}
-                  </p>
+                  <div className="text-[10px] text-gray-400 truncate">{agent.role}</div>
                 </div>
               </div>
+
+              <p className="text-[10px] text-gray-500 mt-1.5 leading-snug line-clamp-2">
+                {agent.desc}
+              </p>
             </div>
           );
         })}

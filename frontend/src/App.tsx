@@ -3,11 +3,14 @@ import { Navbar } from './components/Navbar';
 import { SetupView } from './components/SetupView';
 import { InterviewRoom } from './components/InterviewRoom';
 import { ReportView } from './components/ReportView';
+import { HistoryView } from './components/HistoryView';
 import { PrivacyModeProvider } from './context/PrivacyModeContext';
-import type { Message, EvaluationReport } from './types';
+import { AuthProvider } from './context/AuthContext';
+import { loadLLMConfig } from './utils/llmConfig';
+import type { Message, EvaluationReport, InterviewType, IndustryType, SeniorityLevel, DifficultyLevel } from './types';
 
 export function App() {
-  const [view, setView] = useState<'setup' | 'interview' | 'report'>('setup');
+  const [view, setView] = useState<'setup' | 'interview' | 'report' | 'history'>('setup');
   const [sessionId, setSessionId] = useState<string>('');
   const [stage, setStage] = useState<string>('setup');
   const [currentInterviewer, setCurrentInterviewer] = useState<string>('orchestrator');
@@ -19,10 +22,10 @@ export function App() {
   const [report, setReport] = useState<EvaluationReport | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
-  // Timer effect during interview
+  // Timer during interview (freeze when paused)
   useEffect(() => {
     let interval: number | null = null;
-    if (view === 'interview') {
+    if (view === 'interview' && status !== 'paused') {
       interval = window.setInterval(() => {
         setElapsedSeconds((prev) => prev + 1);
       }, 1000);
@@ -30,37 +33,59 @@ export function App() {
     return () => {
       if (interval) window.clearInterval(interval);
     };
-  }, [view]);
+  }, [view, status]);
 
   // 1. Start Interview handler
   const handleStartInterview = async (config: {
     resumeText: string;
     jdText: string;
-    difficulty: string;
+    interviewType: InterviewType;
+    industry: IndustryType;
+    jobRole: string;
+    seniority: SeniorityLevel;
+    difficulty: DifficultyLevel;
     style: string;
     language: string;
+    customConfig?: any;
   }) => {
     setIsThinking(true);
     try {
-      // 1. Create Session
+      const llmConfig = loadLLMConfig();
+      const token = localStorage.getItem('interview_copilot_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // Create session
       const sessionRes = await fetch('/api/v1/interviews/session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           resume_text: config.resumeText,
           jd_text: config.jdText,
+          interview_type: config.interviewType,
+          industry: config.industry,
+          job_role: config.jobRole,
+          seniority: config.seniority,
           difficulty: config.difficulty,
           style: config.style,
           language: config.language,
+          custom_config: config.customConfig,
+          ...(llmConfig ? { llm_config: llmConfig } : {}),
         }),
       });
+
+      if (!sessionRes.ok) {
+        throw new Error('创建面试会话失败');
+      }
+
       const sessionData = await sessionRes.json();
       const newSessionId = sessionData.session_id;
       setSessionId(newSessionId);
 
-      // 2. Start Interview (Icebreak from Orchestrator)
+      // Start interview (Icebreak / First Question)
       const startRes = await fetch(`/api/v1/interviews/${newSessionId}/start`, {
         method: 'POST',
+        headers,
       });
       const startData = await startRes.json();
 
@@ -74,17 +99,16 @@ export function App() {
       setView('interview');
     } catch (error) {
       console.error('Failed to start interview:', error);
-      alert('启动面试失败，请检查网络或后端服务。');
+      alert('启动面试失败，请检查网络或后端服务连接。');
     } finally {
       setIsThinking(false);
     }
   };
 
-  // 2. Send Candidate Answer handler
+  // 2. Submit Candidate Answer
   const handleSendMessage = async (text: string) => {
-    if (!sessionId || isThinking) return;
+    if (!sessionId || isThinking || status === 'paused') return;
 
-    // Optimistically append user message
     const tempUserMsg: Message = {
       role: 'user',
       name: 'candidate',
@@ -108,7 +132,6 @@ export function App() {
       setStatus(data.status);
       setShadowLogsCount((prev) => prev + 1);
 
-      // If status is finished, automatically transition to report
       if (data.status === 'finished') {
         handleFinishInterview();
       }
@@ -120,7 +143,85 @@ export function App() {
     }
   };
 
-  // 3. Request Lifeline handler
+  // 3. Pause Interview
+  const handlePauseInterview = async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/v1/interviews/${sessionId}/pause`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ elapsed_seconds: elapsedSeconds }),
+      });
+      if (res.ok) {
+        setStatus('paused');
+      }
+    } catch (err) {
+      console.error('Failed to pause interview:', err);
+    }
+  };
+
+  // 4. Resume Interview
+  const handleResumeInterview = async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/v1/interviews/${sessionId}/resume`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        setStatus('waiting_user');
+      }
+    } catch (err) {
+      console.error('Failed to resume interview:', err);
+    }
+  };
+
+  // 5. Redo Turn
+  const handleRedoTurn = async () => {
+    if (!sessionId || isThinking) return;
+    setIsThinking(true);
+    try {
+      const res = await fetch(`/api/v1/interviews/${sessionId}/redo`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.state) {
+        setMessages(data.state.messages || []);
+        setStage(data.state.stage);
+        setCurrentInterviewer(data.state.current_interviewer);
+        setStatus(data.state.status || 'waiting_user');
+        setShadowLogsCount((prev) => Math.max(0, prev - 1));
+      }
+    } catch (err) {
+      console.error('Failed to redo turn:', err);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  // 6. Restart Interview
+  const handleRestartInterview = async () => {
+    if (!sessionId || isThinking) return;
+    setIsThinking(true);
+    try {
+      const res = await fetch(`/api/v1/interviews/${sessionId}/restart`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      setStage(data.stage || 'self_intro');
+      setCurrentInterviewer(data.current_interviewer || 'orchestrator');
+      setMessages(data.messages || []);
+      setStatus(data.status || 'waiting_user');
+      setElapsedSeconds(0);
+      setShadowLogsCount(0);
+      setLifelinesUsed(0);
+    } catch (err) {
+      console.error('Failed to restart interview:', err);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  // 7. Request Lifeline
   const handleRequestLifeline = async () => {
     if (!sessionId || isThinking) return;
     setIsThinking(true);
@@ -138,7 +239,7 @@ export function App() {
     }
   };
 
-  // 4. Finish Interview & Generate Report
+  // 8. Finish Interview & Generate Report
   const handleFinishInterview = async () => {
     if (!sessionId) return;
     setIsThinking(true);
@@ -149,16 +250,38 @@ export function App() {
       const data = await res.json();
       setReport(data.report);
       setStage('report');
+      setStatus('finished');
       setView('report');
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert('生成报告失败，请重试。');
+      alert('生成复盘报告失败，请重试。');
     } finally {
       setIsThinking(false);
     }
   };
 
-  // 5. Restart
+  // 9. View Report from History
+  const handleViewReportFromHistory = async (targetSessionId: string) => {
+    setIsThinking(true);
+    try {
+      const res = await fetch(`/api/v1/interviews/${targetSessionId}/report`);
+      if (res.ok) {
+        const data = await res.json();
+        setReport(data);
+        setSessionId(targetSessionId);
+        setStage('report');
+        setView('report');
+      } else {
+        alert('未找到该场面试的评估报告');
+      }
+    } catch (err) {
+      console.error('Failed to load past report:', err);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  // 10. Restart / Return to Setup
   const handleRestart = () => {
     setSessionId('');
     setStage('setup');
@@ -168,41 +291,61 @@ export function App() {
     setLifelinesUsed(0);
     setShadowLogsCount(0);
     setElapsedSeconds(0);
+    setStatus('ready');
     setView('setup');
   };
 
   return (
-    <PrivacyModeProvider>
-      <div className="min-h-screen bg-[#0b0f19] text-gray-100 flex flex-col font-sans">
-        <Navbar currentStage={stage} elapsedSeconds={elapsedSeconds} status={status} />
+    <AuthProvider>
+      <PrivacyModeProvider>
+        <div className="min-h-screen bg-[#0b0f19] text-gray-100 flex flex-col font-sans">
+          <Navbar
+            currentStage={stage}
+            elapsedSeconds={elapsedSeconds}
+            status={status}
+            onNavigateHistory={() => setView('history')}
+            onNavigateHome={handleRestart}
+          />
 
-        <main className="flex-1">
-          {view === 'setup' && (
-            <SetupView onStartInterview={handleStartInterview} isLoading={isThinking} />
-          )}
+          <main className="flex-1">
+            {view === 'setup' && (
+              <SetupView onStartInterview={handleStartInterview} isLoading={isThinking} />
+            )}
 
-          {view === 'interview' && (
-            <InterviewRoom
-              sessionId={sessionId}
-              stage={stage}
-              currentInterviewer={currentInterviewer}
-              messages={messages}
-              status={status}
-              lifelinesUsed={lifelinesUsed}
-              isThinking={isThinking}
-              shadowLogsCount={shadowLogsCount}
-              onSendMessage={handleSendMessage}
-              onRequestLifeline={handleRequestLifeline}
-              onFinishInterview={handleFinishInterview}
-            />
-          )}
+            {view === 'interview' && (
+              <InterviewRoom
+                sessionId={sessionId}
+                stage={stage}
+                currentInterviewer={currentInterviewer}
+                messages={messages}
+                status={status}
+                lifelinesUsed={lifelinesUsed}
+                isThinking={isThinking}
+                shadowLogsCount={shadowLogsCount}
+                onSendMessage={handleSendMessage}
+                onRequestLifeline={handleRequestLifeline}
+                onFinishInterview={handleFinishInterview}
+                onPauseInterview={handlePauseInterview}
+                onResumeInterview={handleResumeInterview}
+                onRedoTurn={handleRedoTurn}
+                onRestartInterview={handleRestartInterview}
+              />
+            )}
 
-          {view === 'report' && report && (
-            <ReportView report={report} onRestart={handleRestart} />
-          )}
-        </main>
-      </div>
-    </PrivacyModeProvider>
+            {view === 'report' && report && (
+              <ReportView report={report} onRestart={handleRestart} />
+            )}
+
+            {view === 'history' && (
+              <HistoryView
+                onBack={() => setView('setup')}
+                onViewReport={handleViewReportFromHistory}
+              />
+            )}
+          </main>
+        </div>
+      </PrivacyModeProvider>
+    </AuthProvider>
   );
 }
 

@@ -1,5 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Lightbulb, CheckCircle2, Bot, User } from 'lucide-react';
+import {
+  Send,
+  Lightbulb,
+  CheckCircle2,
+  Bot,
+  User,
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  Volume2,
+  VolumeX,
+  Pause,
+  Play,
+  RotateCcw,
+  RefreshCw,
+  Tv,
+  MessageSquare,
+  Zap,
+  Code2,
+  Briefcase,
+  Users2,
+  UserCheck
+} from 'lucide-react';
 import type { Message } from '../types';
 import { InterviewerPanel } from './InterviewerPanel';
 
@@ -15,21 +38,180 @@ interface InterviewRoomProps {
   onSendMessage: (text: string) => void;
   onRequestLifeline: () => void;
   onFinishInterview: () => void;
+  onPauseInterview: () => void;
+  onResumeInterview: () => void;
+  onRedoTurn: () => void;
+  onRestartInterview: () => void;
 }
 
 export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   currentInterviewer,
   messages,
+  status,
   lifelinesUsed,
   isThinking,
   shadowLogsCount,
   onSendMessage,
   onRequestLifeline,
   onFinishInterview,
+  onPauseInterview,
+  onResumeInterview,
+  onRedoTurn,
+  onRestartInterview,
 }) => {
   const [inputText, setInputText] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useState<'meeting' | 'chat'>('meeting');
+  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isMicOn, setIsMicOn] = useState(false);
+  const [isTTSActive, setIsTTSActive] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Initialize Speech Recognition (STT)
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'zh-CN';
+
+      recognition.onresult = (event: any) => {
+        let currentTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            setInputText((prev) => prev + event.results[i][0].transcript);
+          } else {
+            currentTranscript += event.results[i][0].transcript;
+          }
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        console.warn('Speech recognition error:', e);
+        setIsMicOn(false);
+      };
+
+      recognition.onend = () => {
+        setIsMicOn(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  // Toggle STT Microphone
+  const toggleMic = () => {
+    if (!recognitionRef.current) {
+      alert('您的浏览器暂不支持原生语音识别，请使用 Chrome 或 Edge 浏览器。');
+      return;
+    }
+
+    if (isMicOn) {
+      recognitionRef.current.stop();
+      setIsMicOn(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsMicOn(true);
+      } catch (err) {
+        console.error('Failed to start speech recognition:', err);
+      }
+    }
+  };
+
+  // Text-To-Speech (TTS) for latest interviewer message
+  const speakText = (text: string, interviewerName?: string) => {
+    if (!('speechSynthesis' in window) || !isTTSActive) return;
+
+    window.speechSynthesis.cancel();
+    const cleanText = text.replace(/[*#`_\[\]()]/g, '');
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+
+    switch (interviewerName) {
+      case 'orchestrator':
+        utterance.pitch = 1.0;
+        utterance.rate = 1.05;
+        break;
+      case 'technical':
+        utterance.pitch = 0.95;
+        utterance.rate = 1.1;
+        break;
+      case 'hr':
+        utterance.pitch = 1.15;
+        utterance.rate = 1.0;
+        break;
+      case 'management':
+        utterance.pitch = 0.9;
+        utterance.rate = 1.0;
+        break;
+      case 'challenger':
+        utterance.pitch = 0.85;
+        utterance.rate = 1.1;
+        break;
+      default:
+        utterance.pitch = 1.0;
+        utterance.rate = 1.0;
+    }
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Auto-speak new interviewer responses
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.role === 'assistant') {
+        speakText(lastMsg.content, lastMsg.name);
+      }
+    }
+  }, [messages.length]);
+
+  // Webcam stream management
+  useEffect(() => {
+    const startCamera = async () => {
+      if (isCameraOn && viewMode === 'meeting') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+            audio: false,
+          });
+          mediaStreamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (err) {
+          console.warn('Webcam permission denied or camera not available:', err);
+          setIsCameraOn(false);
+        }
+      } else {
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+        }
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [isCameraOn, viewMode]);
+
+  // Scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -40,9 +222,13 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
   const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() || isThinking) return;
+    if (!inputText.trim() || isThinking || status === 'paused') return;
     onSendMessage(inputText.trim());
     setInputText('');
+    if (isMicOn && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsMicOn(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -52,185 +238,520 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     }
   };
 
-  const getInterviewerBadge = (name?: string) => {
+  // Get active interviewer visual meta
+  const getInterviewerMeta = (name?: string) => {
     switch (name) {
       case 'orchestrator':
         return {
           title: '主考官 · 王主持',
+          sub: '主持与全流程协调',
           badgeBg: 'bg-blue-900/60 text-blue-300 border-blue-700/50',
           bubbleBg: 'bg-blue-950/20 border-blue-900/40 text-blue-100',
+          gradient: 'from-blue-600 to-indigo-700',
+          avatarIcon: UserCheck,
         };
       case 'technical':
         return {
           title: '技术面试官 · 李架构',
+          sub: '高可用与底层原理深度考查',
           badgeBg: 'bg-cyan-900/60 text-cyan-300 border-cyan-700/50',
           bubbleBg: 'bg-cyan-950/20 border-cyan-900/40 text-cyan-100',
+          gradient: 'from-cyan-600 to-teal-700',
+          avatarIcon: Code2,
         };
       case 'hr':
         return {
           title: 'HR面试官 · 陈总监',
+          sub: 'STAR行为、软技能与文化契合度',
           badgeBg: 'bg-purple-900/60 text-purple-300 border-purple-700/50',
           bubbleBg: 'bg-purple-950/20 border-purple-900/40 text-purple-100',
+          gradient: 'from-purple-600 to-pink-700',
+          avatarIcon: Users2,
+        };
+      case 'management':
+        return {
+          title: '管理岗考官 · 赵战略',
+          sub: '团队梯队、技术债务治理与研发效能',
+          badgeBg: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50',
+          bubbleBg: 'bg-emerald-950/20 border-emerald-900/40 text-emerald-100',
+          gradient: 'from-emerald-600 to-green-700',
+          avatarIcon: Briefcase,
         };
       case 'challenger':
         return {
           title: '压力挑战官 · 张挑刺',
+          sub: '极端容灾故障与逻辑反例施压',
           badgeBg: 'bg-amber-900/60 text-amber-300 border-amber-700/50',
           bubbleBg: 'bg-amber-950/20 border-amber-900/40 text-amber-100',
+          gradient: 'from-amber-600 to-red-700',
+          avatarIcon: Zap,
         };
       default:
         return {
-          title: '面试官',
+          title: '主考官 · 王主持',
+          sub: '面试评审席',
           badgeBg: 'bg-gray-800 text-gray-300 border-gray-700',
           bubbleBg: 'bg-gray-900 border-gray-800 text-gray-200',
+          gradient: 'from-blue-600 to-indigo-700',
+          avatarIcon: Bot,
         };
     }
   };
 
+  const activeInterviewerMeta = getInterviewerMeta(currentInterviewer);
+  const latestAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
+
   return (
-    <div className="max-w-6xl mx-auto py-4 px-4 flex flex-col h-[calc(100vh-5rem)]">
-      {/* 1. Multi-Agent Seat Panel */}
-      <div className="mb-4">
-        <InterviewerPanel
-          currentInterviewer={currentInterviewer}
-          isThinking={isThinking}
-          shadowLogsCount={shadowLogsCount}
-        />
-      </div>
+    <div className="max-w-6xl mx-auto py-3 px-4 flex flex-col h-[calc(100vh-4.5rem)] relative">
+      {/* 0. Paused Overlay */}
+      {status === 'paused' && (
+        <div className="absolute inset-0 z-40 bg-gray-950/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+          <div className="w-16 h-16 rounded-3xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mb-4 shadow-xl">
+            <Pause className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">模拟面试已暂停</h2>
+          <p className="text-xs text-gray-400 max-w-sm mb-6">
+            面试计时已冻结，会话进度已完整保存到数据库中。您可以稍作休息或调整状态，随时继续。
+          </p>
+          <button
+            onClick={onResumeInterview}
+            className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg transition"
+          >
+            <Play className="w-4 h-4 fill-current" />
+            <span>继续进行面试</span>
+          </button>
+        </div>
+      )}
 
-      {/* 2. Chat Dialogue Feed */}
-      <div className="flex-1 bg-gray-950/70 border border-gray-800/80 rounded-2xl p-4 overflow-y-auto space-y-4">
-        {messages.map((msg, index) => {
-          const isCandidate = msg.role === 'user';
-          const meta = getInterviewerBadge(msg.name);
-
-          return (
-            <div
-              key={index}
-              className={`flex items-start space-x-3 ${
-                isCandidate ? 'flex-row-reverse space-x-reverse' : 'flex-row'
+      {/* Top Toolbar: Mode Switch & Status Control */}
+      <div className="flex items-center justify-between mb-3 bg-gray-900/80 border border-gray-800 px-4 py-2 rounded-2xl">
+        <div className="flex items-center space-x-2">
+          {/* Dual-mode Switch */}
+          <div className="flex bg-gray-950 p-1 rounded-xl border border-gray-800">
+            <button
+              type="button"
+              onClick={() => setViewMode('meeting')}
+              className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-medium transition ${
+                viewMode === 'meeting'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-gray-400 hover:text-gray-200'
               }`}
             >
-              {/* Avatar */}
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
-                  isCandidate
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-800 border border-gray-700 text-gray-300'
-                }`}
-              >
-                {isCandidate ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
-              </div>
-
-              {/* Message Box */}
-              <div
-                className={`max-w-2xl rounded-2xl p-4 border text-sm leading-relaxed ${
-                  isCandidate
-                    ? 'bg-indigo-950/40 border-indigo-800/50 text-indigo-100 rounded-tr-none'
-                    : `${meta.bubbleBg} rounded-tl-none`
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5 space-x-3">
-                  <span
-                    className={`text-[11px] px-2 py-0.5 rounded-md border font-medium ${
-                      isCandidate
-                        ? 'bg-indigo-900/60 text-indigo-300 border-indigo-700/40'
-                        : meta.badgeBg
-                    }`}
-                  >
-                    {isCandidate ? '候选人 (你)' : meta.title}
-                  </span>
-                  {msg.timestamp && (
-                    <span className="text-[10px] text-gray-500">
-                      {new Date(msg.timestamp).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
-                    </span>
-                  )}
-                </div>
-
-                <div className="whitespace-pre-wrap font-sans text-[13px]">{msg.content}</div>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Thinking Indicator */}
-        {isThinking && (
-          <div className="flex items-center space-x-3 text-xs text-gray-400 py-2 px-1 animate-pulse">
-            <div className="w-8 h-8 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center">
-              <Bot className="w-4 h-4 text-blue-400" />
-            </div>
-            <div className="flex items-center space-x-2 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-xl">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-              <span>面试官正在倾听并研讨下一轮提问与评估...</span>
-            </div>
+              <Tv className="w-3.5 h-3.5" />
+              <span>视频会议全真模式</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('chat')}
+              className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-medium transition ${
+                viewMode === 'chat'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>经典对话流模式</span>
+            </button>
           </div>
-        )}
 
-        <div ref={messagesEndRef} />
+          {/* TTS Toggle Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsTTSActive(!isTTSActive);
+              if (isTTSActive) window.speechSynthesis.cancel();
+            }}
+            title={isTTSActive ? '面试官语音朗读已开启' : '面试官语音已静音'}
+            className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs transition ${
+              isTTSActive
+                ? 'bg-blue-950/60 border-blue-600/40 text-blue-300'
+                : 'bg-gray-800 border-gray-700 text-gray-400'
+            }`}
+          >
+            {isTTSActive ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{isTTSActive ? '语音开启' : '静音'}</span>
+          </button>
+        </div>
+
+        {/* Action Controls: Pause, Redo, Restart, Finish */}
+        <div className="flex items-center space-x-2 text-xs">
+          {/* Redo Turn */}
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('确认撤销上一轮问答并重答本题吗？')) {
+                onRedoTurn();
+              }
+            }}
+            disabled={isThinking || messages.length < 2}
+            title="撤销上一轮作答，重新回答当前问题"
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 transition disabled:opacity-40"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">重答本题</span>
+          </button>
+
+          {/* Pause */}
+          <button
+            type="button"
+            onClick={onPauseInterview}
+            disabled={isThinking}
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-950/50 hover:bg-amber-900/60 border border-amber-800/50 text-amber-300 transition disabled:opacity-40"
+          >
+            <Pause className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">暂停面试</span>
+          </button>
+
+          {/* Restart */}
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('确认重新开始整场面试吗？当前记录将被重置。')) {
+                onRestartInterview();
+              }
+            }}
+            disabled={isThinking}
+            title="清空当前问答，重新从开场破冰开始"
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-red-950/50 border border-gray-700 hover:border-red-700/50 text-gray-400 hover:text-red-300 transition disabled:opacity-40"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">重新开始</span>
+          </button>
+
+          {/* Finish */}
+          <button
+            type="button"
+            onClick={onFinishInterview}
+            disabled={isThinking}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 transition font-medium"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>交卷评估</span>
+          </button>
+        </div>
       </div>
 
-      {/* 3. Action and Input Bar */}
-      <div className="mt-3 bg-gray-900/80 border border-gray-800 rounded-2xl p-3">
-        {/* Tool Row */}
+      {/* Main Panel */}
+      {viewMode === 'meeting' ? (
+        /* Video Conference Layout */
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0">
+          {/* Main Stage (Left / Top): Active AI Interviewer Feed */}
+          <div className="lg:col-span-8 bg-gray-950/80 border border-gray-800 rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-2xl">
+            {/* Background Glow */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Stage Header */}
+            <div className="flex items-center justify-between z-10">
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] uppercase tracking-wider font-mono px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-700/60 text-emerald-400 flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span>实时视频面试中</span>
+                </span>
+                <span
+                  className={`text-[11px] px-2.5 py-0.5 rounded-full border font-medium ${activeInterviewerMeta.badgeBg}`}
+                >
+                  {activeInterviewerMeta.title}
+                </span>
+              </div>
+
+              <div className="text-[11px] text-gray-500">
+                影子观察员静默监听中 ({shadowLogsCount} 轮)
+              </div>
+            </div>
+
+            {/* Virtual Interviewer Avatar Center Stage */}
+            <div className="my-auto flex flex-col items-center justify-center text-center z-10 py-6">
+              {/* Dynamic Sound Wave Ring */}
+              <div className="relative">
+                <div
+                  className={`w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-tr ${
+                    activeInterviewerMeta.gradient
+                  } flex items-center justify-center shadow-2xl transition-transform duration-300 ${
+                    isSpeaking ? 'scale-105 shadow-blue-500/40 ring-4 ring-blue-500/40' : ''
+                  }`}
+                >
+                  <Bot className="w-14 h-14 sm:w-16 sm:h-16 text-white" />
+                </div>
+
+                {/* Animated speech ripple */}
+                {isSpeaking && (
+                  <div className="absolute inset-0 rounded-3xl border-2 border-blue-400 animate-ping pointer-events-none opacity-50" />
+                )}
+              </div>
+
+              <h3 className="text-lg font-bold text-white mt-4">{activeInterviewerMeta.title}</h3>
+              <p className="text-xs text-gray-400 max-w-sm mt-1 leading-snug">
+                {activeInterviewerMeta.sub}
+              </p>
+
+              {/* Speaking / Listening State indicator */}
+              <div className="mt-3 flex items-center space-x-2 text-xs">
+                {isThinking ? (
+                  <span className="px-3 py-1 rounded-full bg-blue-900/50 border border-blue-700/50 text-blue-300 animate-pulse">
+                    🤔 面试官正在斟酌考题与追问方向...
+                  </span>
+                ) : isSpeaking ? (
+                  <span className="px-3 py-1 rounded-full bg-emerald-900/50 border border-emerald-700/50 text-emerald-300 flex items-center space-x-1.5">
+                    <Volume2 className="w-3.5 h-3.5 animate-bounce" />
+                    <span>正在语音提问...</span>
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 rounded-full bg-gray-900 border border-gray-800 text-gray-400 flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    <span>正在倾听候选人作答</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Live Floating Subtitles Window */}
+            <div className="z-10 bg-gray-900/90 border border-gray-800 rounded-2xl p-3.5 shadow-lg backdrop-blur">
+              <div className="text-[10px] text-gray-400 font-semibold mb-1 flex items-center justify-between">
+                <span>实时字幕 · 最新提问</span>
+                {latestAssistantMessage && (
+                  <button
+                    onClick={() =>
+                      speakText(latestAssistantMessage.content, latestAssistantMessage.name)
+                    }
+                    className="text-[10px] text-blue-400 hover:underline flex items-center space-x-1"
+                  >
+                    <Volume2 className="w-3 h-3" />
+                    <span>重新朗读</span>
+                  </button>
+                )}
+              </div>
+              <div className="text-xs text-gray-100 font-sans leading-relaxed max-h-24 overflow-y-auto whitespace-pre-wrap">
+                {latestAssistantMessage?.content || '面试准备就绪，即将开始...'}
+              </div>
+            </div>
+
+            {/* Candidate PiP Webcam Preview (Bottom-Right) */}
+            <div className="absolute bottom-4 right-4 z-20 w-40 h-28 sm:w-48 sm:h-36 bg-gray-900 border-2 border-gray-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col justify-between">
+              {isCameraOn ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover transform -scale-x-100"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-gray-950 text-gray-500 text-xs">
+                  <User className="w-8 h-8 mb-1" />
+                  <span>摄像头已关闭</span>
+                </div>
+              )}
+
+              {/* Overlay controls on camera PiP */}
+              <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-1 rounded-lg bg-black/60 backdrop-blur text-[10px] text-white">
+                <span className="truncate">候选人 (你)</span>
+                <div className="flex items-center space-x-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraOn(!isCameraOn)}
+                    className="p-1 hover:text-blue-400"
+                    title={isCameraOn ? '关闭摄像头' : '打开摄像头'}
+                  >
+                    {isCameraOn ? <Video className="w-3 h-3" /> : <VideoOff className="w-3 h-3 text-red-400" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Dialogue History Log Stream */}
+          <div className="lg:col-span-4 bg-gray-950/70 border border-gray-800 rounded-3xl p-3 flex flex-col min-h-0">
+            <div className="text-xs font-semibold text-gray-400 mb-2 px-2 flex items-center justify-between">
+              <span>问答历史纪录</span>
+              <span className="text-[10px] text-gray-500">{messages.length} 条互动</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {messages.map((msg, index) => {
+                const isCandidate = msg.role === 'user';
+                const meta = getInterviewerMeta(msg.name);
+                return (
+                  <div
+                    key={index}
+                    className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                      isCandidate
+                        ? 'bg-indigo-950/30 border-indigo-800/40 text-indigo-100 ml-4'
+                        : `${meta.bubbleBg} mr-4`
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[10px] mb-1 opacity-80">
+                      <span className="font-semibold">{isCandidate ? '你 (候选人)' : meta.title}</span>
+                      {msg.timestamp && (
+                        <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      )}
+                    </div>
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Classic Chat Feed Layout */
+        <div className="flex-1 flex flex-col min-h-0 space-y-3">
+          <InterviewerPanel
+            currentInterviewer={currentInterviewer}
+            isThinking={isThinking}
+            shadowLogsCount={shadowLogsCount}
+          />
+
+          <div className="flex-1 bg-gray-950/70 border border-gray-800/80 rounded-2xl p-4 overflow-y-auto space-y-4">
+            {messages.map((msg, index) => {
+              const isCandidate = msg.role === 'user';
+              const meta = getInterviewerMeta(msg.name);
+
+              return (
+                <div
+                  key={index}
+                  className={`flex items-start space-x-3 ${
+                    isCandidate ? 'flex-row-reverse space-x-reverse' : 'flex-row'
+                  }`}
+                >
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
+                      isCandidate ? 'bg-indigo-600 text-white' : 'bg-gray-800 border border-gray-700 text-gray-300'
+                    }`}
+                  >
+                    {isCandidate ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+                  </div>
+
+                  <div
+                    className={`max-w-2xl rounded-2xl p-4 border text-sm leading-relaxed ${
+                      isCandidate
+                        ? 'bg-indigo-950/40 border-indigo-800/50 text-indigo-100 rounded-tr-none'
+                        : `${meta.bubbleBg} rounded-tl-none`
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5 space-x-3">
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-md border font-medium ${
+                          isCandidate ? 'bg-indigo-900/60 text-indigo-300 border-indigo-700/40' : meta.badgeBg
+                        }`}
+                      >
+                        {isCandidate ? '候选人 (你)' : meta.title}
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        {!isCandidate && (
+                          <button
+                            type="button"
+                            onClick={() => speakText(msg.content, msg.name)}
+                            title="语音朗读"
+                            className="text-gray-400 hover:text-blue-400 transition"
+                          >
+                            <Volume2 className="w-3 h-3" />
+                          </button>
+                        )}
+                        {msg.timestamp && (
+                          <span className="text-[10px] text-gray-500">
+                            {new Date(msg.timestamp).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="whitespace-pre-wrap font-sans text-[13px]">{msg.content}</div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {isThinking && (
+              <div className="flex items-center space-x-3 text-xs text-gray-400 py-2 px-1 animate-pulse">
+                <div className="w-8 h-8 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-blue-400" />
+                </div>
+                <div className="flex items-center space-x-2 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-xl">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                  <span>面试官正在倾听并研讨下一轮提问与评估...</span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Input & Multi-modal Action Bar */}
+      <div className="mt-3 bg-gray-900/90 border border-gray-800 rounded-3xl p-3 shadow-xl">
         <div className="flex items-center justify-between mb-2 text-xs">
           <div className="flex items-center space-x-2">
+            {/* Lifeline Button */}
             <button
               type="button"
               onClick={onRequestLifeline}
-              disabled={isThinking}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/40 text-amber-300 transition disabled:opacity-50"
+              disabled={isThinking || status === 'paused'}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/40 text-amber-300 transition disabled:opacity-50"
             >
               <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
               <span>求助提示 Lifeline</span>
               {lifelinesUsed > 0 && (
                 <span className="ml-1 px-1.5 py-0.2 rounded bg-amber-900/80 text-[10px] text-amber-200">
-                  已用 {lifelinesUsed} 次
+                  {lifelinesUsed}次
                 </span>
               )}
             </button>
-            <span className="text-[11px] text-gray-500 hidden sm:inline">
-              (点击可获得思路引导，但影子观察员会记入辅助档案)
-            </span>
+
+            {/* STT Mic Voice Input Button */}
+            <button
+              type="button"
+              onClick={toggleMic}
+              disabled={isThinking || status === 'paused'}
+              title={isMicOn ? '点击停止录音' : '点击开启语音识别，边说边转文字'}
+              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border transition ${
+                isMicOn
+                  ? 'bg-red-950/80 border-red-500 text-red-300 shadow-md shadow-red-950/50 animate-pulse'
+                  : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300'
+              }`}
+            >
+              {isMicOn ? <Mic className="w-3.5 h-3.5 text-red-400" /> : <MicOff className="w-3.5 h-3.5 text-gray-400" />}
+              <span>{isMicOn ? '正在实时录音输入...' : '语音作答 (STT)'}</span>
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onFinishInterview}
-            disabled={isThinking}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-emerald-950/60 border border-gray-700 hover:border-emerald-700/60 text-gray-300 hover:text-emerald-300 transition"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>交卷并生成评估报告</span>
-          </button>
+          <div className="text-[11px] text-gray-500 hidden md:inline">
+            按 <kbd className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Enter</kbd> 发送，
+            <kbd className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Shift+Enter</kbd> 换行
+          </div>
         </div>
 
-        {/* Input Textarea */}
+        {/* Text Input Area */}
         <div className="relative">
           <textarea
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              isThinking
-                ? '面试官正在发言中，请稍候...'
-                : '输入你的回答... (按 Enter 发送，Shift+Enter 换行)'
+              status === 'paused'
+                ? '面试已暂停，请点击顶部“继续面试”...'
+                : isThinking
+                ? '面试官正在发言或评估中，请稍候...'
+                : isMicOn
+                ? '正在聆听您的声音，将自动转为文字输入...'
+                : '输入你的回答或方案阐述... (支持语音输入)'
             }
-            disabled={isThinking}
+            disabled={isThinking || status === 'paused'}
             rows={3}
-            className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 pr-24 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none font-sans leading-relaxed disabled:opacity-50"
+            className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-3 pr-24 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none font-sans leading-relaxed disabled:opacity-50"
           />
 
           <button
             type="button"
             onClick={() => handleSend()}
-            disabled={!inputText.trim() || isThinking}
-            className="absolute bottom-3 right-3 inline-flex items-center space-x-1 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+            disabled={!inputText.trim() || isThinking || status === 'paused'}
+            className="absolute bottom-3 right-3 inline-flex items-center space-x-1 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
           >
-            <span>发送回答</span>
+            <span>提交回答</span>
             <Send className="w-3.5 h-3.5" />
           </button>
         </div>

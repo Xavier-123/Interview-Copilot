@@ -1,7 +1,8 @@
+import io
 import json
 import logging
-from typing import Dict, Any
-from langchain_core.messages import SystemMessage, HumanMessage
+from typing import Dict, Any, Optional
+from langchain_core.messages import HumanMessage
 from app.agents.llm import llm_service
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,43 @@ JD_PARSER_PROMPT = """你是一个专业的【岗位需求 (JD) 分析专家】�
 """
 
 class DocumentParserService:
-    async def parse_resume(self, resume_text: str) -> Dict[str, Any]:
+    @staticmethod
+    def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
+        """Extract plain text from uploaded files (PDF, TXT, MD, DOCX)."""
+        lower_name = filename.lower()
+        
+        # 1. PDF
+        if lower_name.endswith(".pdf"):
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+                pages_text = []
+                for p in reader.pages:
+                    txt = p.extract_text()
+                    if txt:
+                        pages_text.append(txt)
+                return "\n".join(pages_text).strip()
+            except Exception as e:
+                logger.error(f"Failed to extract text from PDF: {e}")
+                # Fallback to byte decode attempt
+                return file_bytes.decode("utf-8", errors="ignore")
+
+        # 2. TXT / Markdown
+        if lower_name.endswith((".txt", ".md", ".json")):
+            for enc in ("utf-8", "gbk", "gb2312", "latin1"):
+                try:
+                    return file_bytes.decode(enc)
+                except UnicodeDecodeError:
+                    continue
+            return file_bytes.decode("utf-8", errors="ignore")
+
+        # 3. DOCX or others
+        try:
+            return file_bytes.decode("utf-8", errors="ignore")
+        except Exception:
+            return ""
+
+    async def parse_resume(self, resume_text: str, llm_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if not resume_text.strip():
             return {
                 "name": "候选人",
@@ -73,7 +110,7 @@ class DocumentParserService:
         
         prompt = RESUME_PARSER_PROMPT.format(resume_text=resume_text)
         try:
-            resp = await llm_service.invoke([HumanMessage(content=prompt)])
+            resp = await llm_service.invoke([HumanMessage(content=prompt)], llm_config=llm_config)
             content = resp.content.strip()
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -91,7 +128,7 @@ class DocumentParserService:
                 "summary_profile": "全栈/后端工程师，具备扎实开发与系统架构经验"
             }
 
-    async def parse_jd(self, jd_text: str) -> Dict[str, Any]:
+    async def parse_jd(self, jd_text: str, llm_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if not jd_text.strip():
             return {
                 "title": "高级研发工程师",
@@ -104,7 +141,7 @@ class DocumentParserService:
 
         prompt = JD_PARSER_PROMPT.format(jd_text=jd_text)
         try:
-            resp = await llm_service.invoke([HumanMessage(content=prompt)])
+            resp = await llm_service.invoke([HumanMessage(content=prompt)], llm_config=llm_config)
             content = resp.content.strip()
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()

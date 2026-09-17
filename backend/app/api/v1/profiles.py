@@ -1,7 +1,15 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+import os
+import uuid
 from typing import Optional
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.parser import parser_service
+from app.models.db import get_db
+from app.models.user import User, UserResume
+from app.core.security import get_current_user_optional
+from app.core.config import settings
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -28,3 +36,79 @@ async def parse_jd_endpoint(req: ParseJDRequest):
         return {"status": "success", "requirements": requirements}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/upload-resume")
+async def upload_resume_file(
+    file: UploadFile = File(...),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload resume file (PDF, DOCX, TXT, MD), extract text, and return structured profile."""
+    try:
+        contents = await file.read()
+        extracted_text = parser_service.extract_text_from_file(contents, file.filename or "resume.txt")
+        if not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="未能从上传的文件中提取到有效文本，请确认文件是否损坏或为空。")
+
+        parsed_profile = await parser_service.parse_resume(extracted_text)
+
+        # Save to DB if user is authenticated
+        saved_resume_id = None
+        if current_user:
+            os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+            saved_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4().hex}_{file.filename}")
+            try:
+                with open(saved_path, "wb") as f:
+                    f.write(contents)
+            except Exception:
+                saved_path = None
+
+            user_resume = UserResume(
+                id=str(uuid.uuid4()),
+                user_id=current_user.id,
+                filename=file.filename or "resume",
+                file_path=saved_path,
+                raw_text=extracted_text,
+                parsed_profile=parsed_profile
+            )
+            db.add(user_resume)
+            await db.commit()
+            saved_resume_id = user_resume.id
+
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "raw_text": extracted_text,
+            "profile": parsed_profile,
+            "resume_id": saved_resume_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"文件处理失败: {str(e)}")
+
+@router.get("/resumes")
+async def get_user_resumes(
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get list of resumes uploaded by current user."""
+    if not current_user:
+        return {"resumes": []}
+
+    result = await db.execute(
+        select(UserResume).where(UserResume.user_id == current_user.id).order_by(UserResume.created_at.desc())
+    )
+    resumes = result.scalars().all()
+    return {
+        "resumes": [
+            {
+                "id": r.id,
+                "filename": r.filename,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "parsed_profile": r.parsed_profile,
+                "raw_text_preview": r.raw_text[:200] + "..." if len(r.raw_text) > 200 else r.raw_text
+            }
+            for r in resumes
+        ]
+    }
