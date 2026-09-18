@@ -1,11 +1,24 @@
 import json
 import logging
+import re
 from typing import Optional, Dict, Any, List
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _clean_llm_text(text: Any) -> Any:
+    """清洗模型文本输出：去掉首尾空白行，并把 3 个以上连续换行压缩成一个空行。
+
+    前端气泡按 whitespace-pre-wrap 原样渲染，模型输出的开头空行/大片空行会
+    直接显示为面试官对话框里的一段长换行，故在统一出口处归一。
+    """
+    if not isinstance(text, str):
+        return text
+    normalized = re.sub(r"[ \t]+\n", "\n", text.strip())
+    return re.sub(r"\n{3,}", "\n\n", normalized)
 
 class LLMService:
     def __init__(self):
@@ -63,14 +76,18 @@ class LLMService:
             client = self._get_custom_client(llm_config)
             if client:
                 try:
-                    return await client.ainvoke(messages)
+                    resp = await client.ainvoke(messages)
+                    resp.content = _clean_llm_text(resp.content)
+                    return resp
                 except Exception as e:
                     logger.error(f"Custom-config LLM call failed: {e}. Falling back to dynamic mock response.")
                     return AIMessage(content=self._generate_mock_reply(messages))
 
         if not self._is_mock and self._client:
             try:
-                return await self._client.ainvoke(messages)
+                resp = await self._client.ainvoke(messages)
+                resp.content = _clean_llm_text(resp.content)
+                return resp
             except Exception as e:
                 logger.error(f"Live LLM call failed: {e}. Falling back to dynamic mock response.")
 

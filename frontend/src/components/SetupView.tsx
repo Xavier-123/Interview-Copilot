@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { loadLLMConfig } from '../utils/llmConfig';
+import { loadSearchConfig } from '../utils/searchConfig';
+import { SearchConfigModal } from './SearchConfigModal';
+import type { PersonaDisplayInfo } from '../utils/interviewers';
 import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, Persona } from '../types';
 
 interface SetupViewProps {
@@ -34,6 +37,8 @@ interface SetupViewProps {
     webSearchEnabled: boolean;
     maxRounds?: number;
     customConfig?: any;
+    /** 本场出场自定义人设的展示信息（含 persona:<id> 引用），供面试官席位与气泡命名 */
+    customPersonas?: PersonaDisplayInfo[];
   }) => void;
   isLoading: boolean;
 }
@@ -206,6 +211,14 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
   const [style, setStyle] = useState('rigorous');
   const [language, setLanguage] = useState('zh');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [searchConfigOpen, setSearchConfigOpen] = useState(false);
+  const [hasLocalSearchKey, setHasLocalSearchKey] = useState(() => Boolean(loadSearchConfig()));
+
+  useEffect(() => {
+    const refreshSearchConfig = () => setHasLocalSearchKey(Boolean(loadSearchConfig()));
+    window.addEventListener('ic-search-config-changed', refreshSearchConfig);
+    return () => window.removeEventListener('ic-search-config-changed', refreshSearchConfig);
+  }, []);
 
   // Custom interview config
   const [customSelectedInterviewers, setCustomSelectedInterviewers] = useState<string[]>([
@@ -343,9 +356,21 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
         interviewType === 'custom'
           ? {
               selected_interviewers: customSelectedInterviewers,
-              focus_topics: customFocusTopics.split(',').map((t) => t.trim()),
+              focus_topics: customFocusTopics.split(/[,，、;；]/).map((t) => t.trim()).filter(Boolean),
             }
           : undefined,
+      customPersonas:
+        interviewType === 'custom'
+          ? myPersonas
+              .filter((p) => customSelectedInterviewers.includes(`persona:${p.id}`))
+              .map((p) => ({
+                key: p.key,
+                ref: `persona:${p.id}`,
+                name: p.name,
+                avatar: p.avatar,
+                description: p.description,
+              }))
+          : [],
     });
   };
 
@@ -845,7 +870,7 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
 
         {/* Web Search Feature Switch */}
         <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 transition-colors hover:border-blue-500/30">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start space-x-3.5">
               <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 mt-0.5 shadow-inner">
                 <Globe className="w-5 h-5" />
@@ -865,17 +890,29 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
               </div>
             </div>
 
-            <label className="relative inline-flex items-center cursor-pointer ml-4">
-              <input
-                type="checkbox"
-                checked={webSearchEnabled}
-                onChange={(e) => setWebSearchEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
+            <div className="flex shrink-0 items-center justify-between gap-3 sm:ml-4 sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setSearchConfigOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-gray-300 transition hover:border-emerald-700 hover:text-emerald-300"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                <span>{hasLocalSearchKey ? 'Tavily 已配置' : '配置搜索引擎'}</span>
+              </button>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={webSearchEnabled}
+                  onChange={(e) => setWebSearchEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
           </div>
         </div>
+
+        <SearchConfigModal open={searchConfigOpen} onClose={() => setSearchConfigOpen(false)} />
 
         {/* Start Button */}
         <div className="flex flex-col items-center gap-3 pt-2">

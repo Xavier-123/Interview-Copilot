@@ -19,13 +19,22 @@ class CreateSessionRequest(BaseModel):
     style: Optional[str] = "rigorous"             # gentle | rigorous | stress
     language: Optional[str] = "zh"                # zh | en
     custom_config: Optional[Dict[str, Any]] = None
+    company_scenario: Optional[Dict[str, Any]] = None
     user_id: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
     web_search_enabled: Optional[bool] = False
     max_rounds: Optional[int] = None              # 轮次上限（None -> 后端默认 6；programmer 前端传 8）
 
+class SearchRuntimeConfig(BaseModel):
+    provider: str = "tavily"
+    api_key: Optional[str] = None
+
 class AnswerRequest(BaseModel):
     message: str
+    search_config: Optional[SearchRuntimeConfig] = None
+
+class SimulateAnswerRequest(BaseModel):
+    search_config: Optional[SearchRuntimeConfig] = None
 
 class PauseRequest(BaseModel):
     elapsed_seconds: Optional[int] = 0
@@ -36,6 +45,12 @@ class ToggleWebSearchRequest(BaseModel):
 class CompareRequest(BaseModel):
     session_id_1: str
     session_id_2: str
+
+@router.get("/scenarios")
+async def list_company_scenarios():
+    """获取内置的大厂与垂直业务线场景卡片（美团外卖、字节推荐、拼多多跨境、阿里多活、腾讯IM等）。"""
+    from app.services.scenario_service import scenario_service
+    return {"scenarios": scenario_service.list_scenarios()}
 
 @router.post("/session")
 async def create_interview_session(
@@ -57,6 +72,7 @@ async def create_interview_session(
             style=req.style or "rigorous",
             language=req.language or "zh",
             custom_config=req.custom_config,
+            company_scenario=req.company_scenario,
             llm_config=req.llm_config,
             web_search_enabled=bool(req.web_search_enabled),
             max_rounds=int(req.max_rounds) if req.max_rounds else 6
@@ -67,6 +83,7 @@ async def create_interview_session(
             "candidate_profile": state["candidate_profile"],
             "jd_requirements": state["jd_requirements"],
             "interview_mode": state["interview_mode"],
+            "company_scenario": state.get("company_scenario"),
             "web_search_enabled": state.get("web_search_enabled", False),
             "status": state["status"]
         }
@@ -94,7 +111,11 @@ async def start_interview(session_id: str):
 async def submit_answer(session_id: str, req: AnswerRequest):
     """Submit candidate answer. Drives the LangGraph forward."""
     try:
-        new_state = await session_manager.submit_candidate_answer(session_id, req.message)
+        new_state = await session_manager.submit_candidate_answer(
+            session_id,
+            req.message,
+            search_config=req.search_config.model_dump() if req.search_config else None,
+        )
         return {
             "session_id": session_id,
             "stage": new_state.get("stage"),
@@ -168,10 +189,17 @@ async def request_lifeline(session_id: str):
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
 @router.post("/{session_id}/simulate-answer")
-async def simulate_standard_answer(session_id: str):
+async def simulate_standard_answer(session_id: str, req: Optional[SimulateAnswerRequest] = None):
     """Generate AI golden standard answer for candidate based on context, question, and optional web search."""
     try:
-        result = await session_manager.simulate_standard_answer(session_id)
+        result = await session_manager.simulate_standard_answer(
+            session_id,
+            search_config=(
+                req.search_config.model_dump()
+                if req and req.search_config
+                else None
+            ),
+        )
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
@@ -281,3 +309,16 @@ async def export_interview_transcript(session_id: str, format: str = "markdown")
     quoted = quote(filename)
     headers = {"Content-Disposition": f"attachment; filename=\"{quoted}\"; filename*=UTF-8''{quoted}"}
     return Response(content=content, media_type=media_type, headers=headers)
+
+@router.get("/{session_id}/audit")
+async def get_session_audit(session_id: str):
+    """获取本场模拟面试中面试官表现质检与自我进化沉淀结果。"""
+    state = await session_manager._ensure_state(session_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Session not found")
+    report = session_manager.get_report(session_id) or {}
+    audit = report.get("interviewer_audit")
+    if not audit:
+        from app.services.audit import audit_service
+        audit = await audit_service.audit_session(state)
+    return {"session_id": session_id, "interviewer_audit": audit}

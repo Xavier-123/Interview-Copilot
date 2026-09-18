@@ -18,10 +18,13 @@ import {
   Tv,
   MessageSquare,
   Sparkles,
-  Globe
+  Globe,
+  Settings2
 } from 'lucide-react';
-import type { Message } from '../types';
+import type { Message, SearchMetadata, SimulateAnswerResult } from '../types';
 import { InterviewerPanel } from './InterviewerPanel';
+import { SearchConfigModal } from './SearchConfigModal';
+import { SearchSources } from './SearchSources';
 import { getInterviewerMeta } from '../utils/interviewers';
 import type { PersonaDisplayInfo } from '../utils/interviewers';
 
@@ -36,6 +39,8 @@ interface InterviewRoomProps {
   shadowLogsCount: number;
   webSearchEnabled: boolean;
   customPersonas?: PersonaDisplayInfo[];
+  /** 本场实际出场的面试官角色 key 列表，席位只展示这些成员 */
+  participantRoles?: string[];
   onSendMessage: (text: string) => void;
   onRequestLifeline: () => void;
   onFinishInterview: () => void;
@@ -44,7 +49,7 @@ interface InterviewRoomProps {
   onRedoTurn: () => void;
   onRestartInterview: () => void;
   onToggleWebSearch: () => void;
-  onSimulateAnswer: () => Promise<string | void>;
+  onSimulateAnswer: () => Promise<SimulateAnswerResult | void>;
 }
 
 export const InterviewRoom: React.FC<InterviewRoomProps> = ({
@@ -58,6 +63,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   shadowLogsCount,
   webSearchEnabled,
   customPersonas,
+  participantRoles,
   onSendMessage,
   onRequestLifeline,
   onFinishInterview,
@@ -76,6 +82,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
   const [simulateAnswerNotification, setSimulateAnswerNotification] = useState<string | null>(null);
+  const [simulateSearchMetadata, setSimulateSearchMetadata] = useState<SearchMetadata | null>(null);
+  const [searchConfigOpen, setSearchConfigOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -259,8 +267,9 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     setSimulateAnswerNotification(null);
     try {
       const generated = await onSimulateAnswer();
-      if (generated && typeof generated === 'string') {
-        setInputText(generated);
+      if (generated?.answer) {
+        setInputText(generated.answer);
+        setSimulateSearchMetadata(generated.searchMetadata ?? null);
         setSimulateAnswerNotification('✨ AI 已根据上下文与简历为您生成第一人称金牌回答，您可直接微调或点击【提交回答】！');
       }
     } catch (err) {
@@ -275,6 +284,16 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
   const activeInterviewerMeta = resolveInterviewerMeta(currentInterviewer);
   const latestAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
+  const latestSearchMetadata = [...messages]
+    .reverse()
+    .find((message) => message.search_metadata)?.search_metadata;
+  const searchStatusLabel = !webSearchEnabled
+    ? '关闭'
+    : latestSearchMetadata?.status === 'success'
+      ? '搜索成功'
+      : latestSearchMetadata?.status === 'failed'
+        ? '搜索失败'
+        : '已开启';
 
   return (
     <div className="max-w-6xl mx-auto py-3 px-4 flex flex-col h-[calc(100vh-4.5rem)] relative">
@@ -299,8 +318,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
       )}
 
       {/* Top Toolbar: Mode Switch & Status Control */}
-      <div className="flex items-center justify-between mb-3 bg-gray-900/80 border border-gray-800 px-4 py-2 rounded-2xl">
-        <div className="flex items-center space-x-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gray-800 bg-gray-900/80 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Dual-mode Switch */}
           <div className="flex bg-gray-950 p-1 rounded-xl border border-gray-800">
             <button
@@ -348,26 +367,38 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
           </button>
 
           {/* Web Search Toggle Button */}
-          <button
-            type="button"
-            onClick={onToggleWebSearch}
-            title={webSearchEnabled ? '联网搜索已开启：实时检索最新技术考点与方案' : '联网搜索已关闭：点击开启'}
-            className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${
-              webSearchEnabled
-                ? 'bg-blue-950/80 border-blue-500/60 text-blue-300 shadow-sm shadow-blue-900/30'
-                : 'bg-gray-800/80 border-gray-700 text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">
-              联网搜索: {webSearchEnabled ? '开启' : '关闭'}
-            </span>
-            <span
-              className={`w-2 h-2 rounded-full ${
-                webSearchEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={onToggleWebSearch}
+              title={webSearchEnabled ? '联网搜索已开启：实时检索最新技术考点与方案' : '联网搜索已关闭：点击开启'}
+              className={`flex items-center space-x-1.5 rounded-l-lg border px-2.5 py-1.5 text-xs transition ${
+                webSearchEnabled
+                  ? latestSearchMetadata?.status === 'failed'
+                    ? 'border-amber-600/60 bg-amber-950/60 text-amber-300'
+                    : 'border-emerald-600/50 bg-emerald-950/50 text-emerald-300'
+                  : 'border-gray-700 bg-gray-800/80 text-gray-400 hover:text-gray-200'
               }`}
-            />
-          </button>
+            >
+              <Globe className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">联网搜索: {searchStatusLabel}</span>
+              <span className={`h-2 w-2 rounded-full ${
+                !webSearchEnabled
+                  ? 'bg-gray-500'
+                  : latestSearchMetadata?.status === 'failed'
+                    ? 'bg-amber-400'
+                    : 'bg-emerald-400'
+              }`} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchConfigOpen(true)}
+              title="配置 Tavily 搜索"
+              className="rounded-r-lg border border-l-0 border-gray-700 bg-gray-800 px-2 py-1.5 text-gray-400 transition hover:text-emerald-300"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Action Controls: Pause, Redo, Restart, Finish */}
@@ -583,6 +614,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
                       )}
                     </div>
                     <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <SearchSources metadata={msg.search_metadata} compact />
                   </div>
                 );
               })}
@@ -598,6 +630,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             isThinking={isThinking}
             shadowLogsCount={shadowLogsCount}
             customPersonas={customPersonas}
+            participantRoles={participantRoles}
           />
 
           <div className="flex-1 bg-gray-950/70 border border-gray-800/80 rounded-2xl p-4 overflow-y-auto space-y-4">
@@ -659,6 +692,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
                     </div>
 
                     <div className="whitespace-pre-wrap font-sans text-[13px]">{msg.content}</div>
+                    <SearchSources metadata={msg.search_metadata} />
                   </div>
                 </div>
               );
@@ -741,19 +775,25 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
         {/* Simulate Answer Notification Banner */}
         {simulateAnswerNotification && (
-          <div className="mb-2 px-3 py-2 rounded-xl bg-indigo-950/70 border border-indigo-700/50 text-indigo-200 text-xs flex items-center justify-between shadow-md animate-fadeIn">
-            <div className="flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-              <span className="leading-snug">{simulateAnswerNotification}</span>
+          <div className="mb-2 rounded-xl border border-indigo-700/50 bg-indigo-950/70 px-3 py-2 text-xs text-indigo-200 shadow-md animate-fadeIn">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <span className="leading-snug">{simulateAnswerNotification}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSimulateAnswerNotification(null);
+                  setSimulateSearchMetadata(null);
+                }}
+                className="ml-2 rounded px-1.5 py-0.5 text-xs text-indigo-400 hover:text-indigo-100"
+                title="关闭提示"
+              >
+                ✕
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setSimulateAnswerNotification(null)}
-              className="text-indigo-400 hover:text-indigo-100 px-1.5 py-0.5 rounded text-xs ml-2"
-              title="关闭提示"
-            >
-              ✕
-            </button>
+            <SearchSources metadata={simulateSearchMetadata} compact />
           </div>
         )}
 
@@ -788,6 +828,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
           </button>
         </div>
       </div>
+      <SearchConfigModal open={searchConfigOpen} onClose={() => setSearchConfigOpen(false)} />
     </div>
   );
 };

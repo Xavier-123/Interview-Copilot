@@ -20,7 +20,7 @@ async def hr_node(state: InterviewState) -> dict:
         jd_requirements=str(jd_requirements),
         condensed_memory=state.get("condensed_memory", "") or "无",
         latest_user_input=state.get("latest_user_input", "") or "准备开始行为与团队协作面试"
-    )
+    ) + interviewer_utils.focus_topics_line(state)
 
     dig_action = state.get("dig_action", "INIT")
     role_line = "请转向另一个行为考察维度（团队协作、跨部门冲突化解、抗压与自驱、职业规划、自我认知等）。"

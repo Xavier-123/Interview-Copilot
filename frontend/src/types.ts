@@ -54,12 +54,40 @@ export interface LLMConfig {
   temperature?: number;
 }
 
+export interface SearchConfig {
+  provider: 'tavily';
+  api_key: string;
+}
+
+export interface SearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  score?: number | null;
+}
+
+export interface SearchMetadata {
+  provider: string;
+  query: string;
+  status: 'success' | 'failed';
+  results: SearchResult[];
+  error_code?: string | null;
+  error_message?: string | null;
+  latency_ms: number;
+}
+
+export interface SimulateAnswerResult {
+  answer: string;
+  searchMetadata?: SearchMetadata | null;
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   name?: string; // 内置角色 key 或自定义人设 key（persona_xxxx）
   content: string;
   stage?: string;
   timestamp?: string;
+  search_metadata?: SearchMetadata;
 }
 
 export interface TranscriptMessage {
@@ -68,6 +96,7 @@ export interface TranscriptMessage {
   content: string;
   stage?: string;
   timestamp?: string;
+  search_metadata?: SearchMetadata;
 }
 
 export interface TranscriptObservation {

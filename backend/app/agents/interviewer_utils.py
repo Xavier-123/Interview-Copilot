@@ -6,6 +6,8 @@ Shared instruction builders for interviewer agent nodes.
 在 technical / hr / management / programmer 全部面试官节点中一致生效。
 """
 
+from typing import List
+
 from app.agents.state import InterviewState
 
 QUESTION_LIMIT = "\n【提问限制】：本轮只围绕一个核心问题提问，最多追加一个简短的补充问（合计不超过 2 个问题点），严禁一次抛出三连问或问题清单。"
@@ -39,6 +41,45 @@ def covered_topics_line(state: InterviewState) -> str:
         return ""
     shown = "、".join(topics[-8:])
     return f"\n【已考察知识点（新问题严禁与之重复）】：{shown}\n"
+
+
+def get_focus_topics(state: InterviewState) -> List[str]:
+    """读取会话级定向考察知识点清单（custom_config.focus_topics，过滤空白与非字符串项）。"""
+    raw = (state.get("custom_config") or {}).get("focus_topics") or []
+    return [t.strip() for t in raw if isinstance(t, str) and t.strip()]
+
+
+def focus_topics_line(state: InterviewState) -> str:
+    """定制面试的定向考察清单注入块；未指定清单时返回空串，其他面试类型行为不变。"""
+    focus = get_focus_topics(state)
+    if not focus:
+        return ""
+    items = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(focus))
+    return (
+        f"\n【定向考察知识点（用户为本场面试指定的强制考察范围，优先级最高）】：\n{items}\n"
+        f"【定向纪律】：出题与切换考点必须从上述清单中选取与你考察职责相符的知识点（可对清单项做合理细分）；"
+        f"除清单内考点的自然深挖外，严禁引入清单外的新考点；本清单优先级高于任何默认模块或知识清单。\n"
+    )
+
+
+def company_scenario_prompt_section(state: InterviewState) -> str:
+    """根据会话注入的目标企业与业务线场景卡，生成上下文提示。"""
+    scenario = state.get("company_scenario")
+    if not scenario or not isinstance(scenario, dict):
+        return ""
+    company = scenario.get("company", "")
+    domain = scenario.get("business_domain", "")
+    challenges = scenario.get("core_challenges", [])
+    sla = scenario.get("sla_constraints", "")
+    ch_text = "\n".join([f"  * {c}" for c in challenges[:3]]) if challenges else ""
+    return (
+        f"\n【目标企业真实业务场景与架构约束】：\n"
+        f"- 目标企业与业务线：{company} - {domain}\n"
+        f"- 真实核心架构挑战：\n{ch_text}\n"
+        f"- SLA与性能指标约束：{sla}\n"
+        f"提问时尽量将考点融合进上述真实业务挑战中，塑造大厂真实的业务泥土味。\n"
+    )
+
 
 
 def build_deep_dive_instruction(state: InterviewState, role_line: str) -> str:
@@ -101,6 +142,21 @@ def build_switch_instruction(state: InterviewState, role_line: str) -> str:
     status = (state.get("last_answer_status") or "").lower()
     next_hint = state.get("next_topic_hint") or ""
     covered = covered_topics_line(state)
+    focus = get_focus_topics(state)
+    if focus:
+        covered_set = {
+            log.get("topic")
+            for log in state.get("evaluation_logs") or []
+            if isinstance(log, dict)
+        }
+        remaining = [t for t in focus if t not in covered_set]
+        remaining_text = "、".join(remaining) if remaining else "清单已全部覆盖，可围绕已考察项的相邻子方向做收束提问"
+        focus_rule = (
+            f"\n【定向考察约束】本场面试为定向考察：下一个考点必须从【定向考察知识点】清单中选取"
+            f"（尚未覆盖：{remaining_text}）；本指令或角色提示与清单冲突时，一律以清单为准。\n"
+        )
+    else:
+        focus_rule = ""
 
     if switch_reason == "failed" or status in ("unknown", "poor") or last_score < 0.5:
         hint_line = f"优先切换到知识点：【{next_hint}】。" if next_hint else "自主选择一个与上一考点不同领域的新知识点。"
@@ -110,6 +166,7 @@ def build_switch_instruction(state: InterviewState, role_line: str) -> str:
             f"提问要求：不要讲解正确答案、不要过度安慰、不要在该考点上继续纠缠；"
             f"用一句简短自然的话收束（收束语要呼应他刚才这段回答的实际内容，如“好，这块我们先过”），然后立即{hint_line}\n"
             f"{covered}"
+            f"{focus_rule}"
             f"{role_line}"
             f"{_language_line(state)}{_format_line()}"
         )
@@ -121,6 +178,25 @@ def build_switch_instruction(state: InterviewState, role_line: str) -> str:
         f"提问要求：先用一句干练的过渡语肯定并收束上一话题——过渡语必须点出候选人【刚才这段回答】里的具体内容，"
         f"严禁把更早轮次说过的话当作'你刚才提到的'，也严禁引用他没说过的内容——然后主动切换考查方向。\n"
         f"{covered}"
+        f"{focus_rule}"
         f"{role_line}"
         f"{_language_line(state)}{_format_line()}"
     )
+
+
+def build_break_routine_instruction(state: InterviewState, role_line: str) -> str:
+    """BREAK_ROUTINE：检测到背诵八股或套路答题，立即推翻预设假设或抛出非标突发故障破局。"""
+    latest_input = state.get("latest_user_input", "")
+    current_topic = state.get("current_topic", "当前核心技术")
+    break_hint = state.get("break_routine_hint") or state.get("follow_up_hint") or "推翻常规假设，考察非标场景下的现场推演"
+    return (
+        f"【系统决策：反套路突击 (Break Routine)】观察员判定候选人刚才的回答高度符合教科书背诵套路，缺乏实战泥土味与权衡思考。\n"
+        f"当前考查主题：【{current_topic}】。\n"
+        f"候选人刚才回答是：'{latest_input}'。\n"
+        f"提问要求：不要顺着他背诵的标准说辞继续问！先用一两句话肯定其背诵的结论正确，"
+        f"随后立即以真实业务大厂考官口吻，提出一个【非标突发故障】或【推翻常规方案假设】的突击挑战：{break_hint}。\n"
+        f"逼问候选人在没有现成八股答案时的现场推理与第一性原理思维。\n"
+        f"{role_line}"
+        f"{_language_line(state)}{_format_line()}"
+    )
+

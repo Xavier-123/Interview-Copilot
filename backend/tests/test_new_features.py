@@ -160,10 +160,10 @@ async def test_max_two_questions_and_simulate_answer_and_search():
     await init_db()
 
     # 1. Test search service
-    snippets = await search_service.search("Redis 分布式锁看门狗机制")
-    assert len(snippets) > 0
-    assert "title" in snippets[0]
-    assert "snippet" in snippets[0]
+    outcome = await search_service.search("Redis 分布式锁看门狗机制")
+    assert outcome.status in ("success", "failed")
+    if outcome.status == "failed":
+        assert outcome.results == []  # Failed searches must never fabricate sources.
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # 2. Create session with web_search_enabled=True
@@ -216,7 +216,9 @@ async def test_max_two_questions_and_simulate_answer_and_search():
         sim_data = sim_res.json()
         assert "standard_answer" in sim_data
         assert "question" in sim_data
-        assert sim_data["web_search_used"] is True
+        assert sim_data["web_search_used"] is (
+            (sim_data.get("search_metadata") or {}).get("status") == "success"
+        )
         assert len(sim_data["standard_answer"]) > 50
         assert "我" in sim_data["standard_answer"]  # First-person answer!
 
@@ -388,4 +390,3 @@ async def test_transcript_view_and_export():
         # 404 for unknown session
         missing = await client.get("/api/v1/interviews/nonexistent-id/transcript")
         assert missing.status_code == 404
-

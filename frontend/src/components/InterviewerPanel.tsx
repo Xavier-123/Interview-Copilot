@@ -7,93 +7,120 @@ interface InterviewerPanelProps {
   isThinking?: boolean;
   shadowLogsCount?: number;
   customPersonas?: PersonaDisplayInfo[];
+  /** 本场实际出场的面试官角色 key 列表；提供时席位只展示这些成员 */
+  participantRoles?: string[];
 }
+
+interface SeatCard {
+  id: string;
+  name: string;
+  role: string;
+  icon: React.ComponentType<{ className?: string }> | null;
+  emoji?: string;
+  color: string;
+  activeBorder: string;
+  desc: string;
+}
+
+const BUILTIN_SEATS: Record<string, Omit<SeatCard, 'id'>> = {
+  orchestrator: {
+    name: '王主持',
+    role: '主考官 / 协调主持 (Orchestrator)',
+    icon: UserCheck,
+    color: 'from-blue-500 to-indigo-600',
+    activeBorder: 'border-blue-500 shadow-blue-500/20',
+    desc: '全局节奏把控、流程推进、环节串场与总结',
+  },
+  technical: {
+    name: '李架构',
+    role: '专业技术面试官 (Technical Specialist)',
+    icon: Code2,
+    color: 'from-cyan-500 to-teal-600',
+    activeBorder: 'border-cyan-500 shadow-cyan-500/20',
+    desc: '高并发、底层原理、系统架构与方案层层深挖',
+  },
+  programmer: {
+    name: '吴博闻',
+    role: '程序员综合面试官 (Programmer)',
+    icon: Terminal,
+    color: 'from-orange-500 to-amber-600',
+    activeBorder: 'border-orange-500 shadow-orange-500/20',
+    desc: '项目经历 + 计算机基础轮转 + 代码题，大厂一二面全真流程',
+  },
+  hr: {
+    name: '陈总监',
+    role: 'HR / 行为文化面试官 (Behavioral STAR)',
+    icon: Users2,
+    color: 'from-purple-500 to-pink-600',
+    activeBorder: 'border-purple-500 shadow-purple-500/20',
+    desc: 'STAR法则、跨团队协同、自驱力与危机应对',
+  },
+  management: {
+    name: '赵管理',
+    role: '管理岗专家 (Leadership & Strategy)',
+    icon: Briefcase,
+    color: 'from-emerald-500 to-green-600',
+    activeBorder: 'border-emerald-500 shadow-emerald-500/20',
+    desc: '团队梯队、技术战略演进、技术债务治理与效能',
+  },
+  challenger: {
+    name: '张挑刺',
+    role: '高压/极限挑战官 (Challenger)',
+    icon: Zap,
+    color: 'from-amber-500 to-red-600',
+    activeBorder: 'border-amber-500 shadow-amber-500/20',
+    desc: '极端容灾故障、资源砍半高压模拟与逻辑反例',
+  },
+};
+
+// 自定义人设席位统一配色
+const PERSONA_SEAT_BASE = {
+  icon: null,
+  color: 'from-violet-500 to-fuchsia-600',
+  activeBorder: 'border-violet-500 shadow-violet-500/20',
+};
+
+function buildSeat(role: string, personas: PersonaDisplayInfo[] | undefined): SeatCard {
+  const builtin = BUILTIN_SEATS[role];
+  if (builtin) return { id: role, ...builtin };
+
+  const persona = (personas || []).find((p) => p.key === role);
+  return {
+    id: role,
+    name: persona?.name || '特邀面试官',
+    role: `自定义面试官 (${persona?.name || 'Persona'})`,
+    ...PERSONA_SEAT_BASE,
+    emoji: persona?.avatar || '🎭',
+    desc: persona?.description || '用户自定义面试官角色',
+  };
+}
+
+// 列数随席位数自适应（完整类名便于 Tailwind 静态提取）
+const LG_COLS: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+  6: 'lg:grid-cols-6',
+};
 
 export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
   currentInterviewer,
   isThinking = false,
   shadowLogsCount = 0,
   customPersonas,
+  participantRoles,
 }) => {
-  const interviewers = [
-    {
-      id: 'orchestrator',
-      name: '王主持',
-      role: '主考官 / 协调主持 (Orchestrator)',
-      icon: UserCheck,
-      color: 'from-blue-500 to-indigo-600',
-      activeBorder: 'border-blue-500 shadow-blue-500/20',
-      desc: '全局节奏把控、流程推进、环节串场与总结',
-    },
-    {
-      id: 'technical',
-      name: '李架构',
-      role: '专业技术面试官 (Technical Specialist)',
-      icon: Code2,
-      color: 'from-cyan-500 to-teal-600',
-      activeBorder: 'border-cyan-500 shadow-cyan-500/20',
-      desc: '高并发、底层原理、系统架构与方案层层深挖',
-    },
-    {
-      id: 'programmer',
-      name: '吴博闻',
-      role: '程序员综合面试官 (Programmer)',
-      icon: Terminal,
-      color: 'from-orange-500 to-amber-600',
-      activeBorder: 'border-orange-500 shadow-orange-500/20',
-      desc: '项目经历 + 计算机基础轮转 + 代码题，大厂一二面全真流程',
-    },
-    {
-      id: 'hr',
-      name: '陈总监',
-      role: 'HR / 行为文化面试官 (Behavioral STAR)',
-      icon: Users2,
-      color: 'from-purple-500 to-pink-600',
-      activeBorder: 'border-purple-500 shadow-purple-500/20',
-      desc: 'STAR法则、跨团队协同、自驱力与危机应对',
-    },
-    {
-      id: 'management',
-      name: '赵管理',
-      role: '管理岗专家 (Leadership & Strategy)',
-      icon: Briefcase,
-      color: 'from-emerald-500 to-green-600',
-      activeBorder: 'border-emerald-500 shadow-emerald-500/20',
-      desc: '团队梯队、技术战略演进、技术债务治理与效能',
-    },
-    {
-      id: 'challenger',
-      name: '张挑刺',
-      role: '高压/极限挑战官 (Challenger)',
-      icon: Zap,
-      color: 'from-amber-500 to-red-600',
-      activeBorder: 'border-amber-500 shadow-amber-500/20',
-      desc: '极端容灾故障、资源砍半高压模拟与逻辑反例',
-    },
-  ];
+  const seats: SeatCard[] = participantRoles?.length
+    ? participantRoles.map((role) => buildSeat(role, customPersonas))
+    : // 未提供阵容时兜底展示全部内置席位 + 人设席位
+      [
+        ...Object.entries(BUILTIN_SEATS).map(([id, card]) => ({ id, ...card })),
+        ...(customPersonas || []).map((p) => buildSeat(p.key, customPersonas)),
+      ];
 
-  // 自定义人设席位（key 形如 persona_xxxx；活跃判断与消息 name 一致）
-  const personaSeats = (customPersonas || []).map((p, idx) => ({
-    id: p.key,
-    name: p.name,
-    role: `自定义面试官 (Persona ${idx + 1})`,
-    icon: null,
-    emoji: p.avatar || '🎭',
-    color: 'from-violet-500 to-fuchsia-600',
-    activeBorder: 'border-violet-500 shadow-violet-500/20',
-    desc: p.description || '用户自定义面试官角色',
-  }));
-
-  const seats: Array<{
-    id: string;
-    name: string;
-    role: string;
-    icon: React.ComponentType<{ className?: string }> | null;
-    emoji?: string;
-    color: string;
-    activeBorder: string;
-    desc: string;
-  }> = [...interviewers, ...personaSeats];
+  const lgCols = LG_COLS[Math.min(seats.length, 6)] || 'lg:grid-cols-6';
 
   return (
     <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 backdrop-blur">
@@ -115,11 +142,7 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
         </div>
       </div>
 
-      <div
-        className={`grid grid-cols-2 sm:grid-cols-3 gap-2.5 ${
-          seats.length > 6 ? 'lg:grid-cols-4' : 'lg:grid-cols-6'
-        }`}
-      >
+      <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2.5 ${lgCols}`}>
         {seats.map((agent) => {
           const isActive = currentInterviewer === agent.id;
           const IconComponent = agent.icon;

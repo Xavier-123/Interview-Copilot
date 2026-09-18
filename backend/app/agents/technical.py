@@ -1,12 +1,15 @@
 from datetime import datetime
+from typing import Optional
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from app.agents.state import InterviewState
 from app.agents.prompts import TECHNICAL_SPECIALIST_PROMPT
 from app.agents.llm import llm_service
 from app.agents import interviewer_utils
-from app.services.search import search_service
+from app.services.search import runtime_search_config, search_service
+from app.services.rag import rag_service
 
-async def technical_node(state: InterviewState) -> dict:
+async def technical_node(state: InterviewState, config: Optional[RunnableConfig] = None) -> dict:
     """
     Technical Specialist Node:
     Conducts technical deep-dives, architectural questions, and scenario follow-ups.
@@ -28,16 +31,42 @@ async def technical_node(state: InterviewState) -> dict:
         seniority=mode.get("seniority", "senior"),
         condensed_memory=state.get("condensed_memory", "") or "无",
         latest_user_input=state.get("latest_user_input", "") or "准备开始第一道技术题考察"
+    ) + interviewer_utils.focus_topics_line(state)
+
+    # Company business scenario injection
+    scenario_section = interviewer_utils.company_scenario_prompt_section(state)
+
+    # RAG interview experience question angles
+    scenario = state.get("company_scenario") or {}
+    company_name = scenario.get("company", "") if isinstance(scenario, dict) else ""
+    current_topic = state.get("current_topic") or "核心技术架构"
+    rag_items = rag_service.retrieve_question_angles(
+        query=f"{current_topic} {job_role} {state.get('latest_user_input', '')}",
+        company=company_name,
+        top_k=1
     )
+    rag_context = ""
+    if rag_items:
+        item = rag_items[0]
+        rag_context = (
+            f"\n【大厂真实面经考点参考（出题与追问灵感）】：\n"
+            f"- 真实大厂考点：{item['topic']} ({item.get('company', '')})\n"
+            f"- 经典问法参考：{item.get('authentic_question', '')}\n"
+            f"- 追问考察要点：{'；'.join(item.get('probing_traps', []))}\n"
+            f"（请将该考点自然融合到候选人的技术背景中提出问题，严禁机械念出原题）\n"
+        )
 
     # Web search integration if enabled
     search_context = ""
+    search_outcome = None
     if state.get("web_search_enabled"):
-        current_topic = state.get("current_topic", "核心技术实践")
         search_query = f"{industry} {job_role} {current_topic} 深度考点"
-        snippets = await search_service.search(search_query, max_results=2)
-        if snippets:
-            search_context = "\n【实时联网参考资料】:\n" + "\n".join([f"- {s['title']}: {s['snippet']}" for s in snippets])
+        search_outcome = await search_service.search(
+            search_query,
+            max_results=3,
+            config=runtime_search_config(config),
+        )
+        search_context = search_outcome.to_prompt_context()
 
     dig_action = state.get("dig_action", "INIT")
     role_line = (
@@ -49,6 +78,11 @@ async def technical_node(state: InterviewState) -> dict:
         prompt = (
             f"这是技术考核的第一道题。请结合候选人的核心技能栈与【{industry} - {job_role}】的要求，"
             f"选定一个核心技术方向，提出一个具备工程落地深度与原理探究的问题。"
+        )
+    elif dig_action == "BREAK_ROUTINE":
+        prompt = interviewer_utils.build_break_routine_instruction(
+            state,
+            "请针对候选人刚才背诵套路中的核心组件提出一个突发生产故障场景，或禁止使用该组件看其现场推演能力。"
         )
     elif dig_action == "DEEP_DIVE":
         prompt = interviewer_utils.build_deep_dive_instruction(
@@ -63,7 +97,7 @@ async def technical_node(state: InterviewState) -> dict:
     else:  # SWITCH_TOPIC
         prompt = interviewer_utils.build_switch_instruction(state, role_line)
 
-    prompt += f"{search_context}{interviewer_utils.QUESTION_LIMIT}"
+    prompt += f"{scenario_section}{rag_context}{search_context}{interviewer_utils.QUESTION_LIMIT}"
 
     resp = await llm_service.invoke(
         [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
@@ -78,6 +112,8 @@ async def technical_node(state: InterviewState) -> dict:
         "stage": "technical",
         "timestamp": datetime.now().isoformat()
     }
+    if search_outcome:
+        out_msg["search_metadata"] = search_outcome.to_metadata()
 
     return {
         "messages": [out_msg],

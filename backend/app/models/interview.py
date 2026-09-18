@@ -24,6 +24,7 @@ class InterviewSessionModel(Base):
     web_search_enabled = Column(Boolean, default=False)
     candidate_profile = Column(JSON, default=dict)
     jd_requirements = Column(JSON, default=dict)
+    company_scenario = Column(JSON, default=dict)  # 目标企业/业务线场景卡片
     interview_state = Column(JSON, default=dict)  # Full LangGraph state snapshot
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -42,6 +43,7 @@ class InterviewMessageModel(Base):
     name = Column(String(32), nullable=True)   # candidate | orchestrator | technical | programmer | hr | challenger | management
     content = Column(Text, nullable=False)
     stage = Column(String(64), nullable=True)
+    search_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("InterviewSessionModel", back_populates="messages")

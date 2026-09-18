@@ -17,6 +17,9 @@ from app.agents.prompts import SIMULATE_ANSWER_PROMPT
 from app.agents.llm import llm_service
 from app.services.parser import parser_service
 from app.services.search import search_service
+from app.services.scenario_service import scenario_service
+from app.services.audit import audit_service
+from app.agents.persona_presets import PERSONA_PRESETS
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +68,23 @@ class SessionManager:
         llm_config: Optional[Dict[str, Any]] = None,
         web_search_enabled: bool = False,
         tech_rounds_target: int = 2,
-        max_rounds: int = 6
+        max_rounds: int = 6,
+        company_scenario: Optional[Dict[str, Any]] = None
     ) -> InterviewState:
         session_id = str(uuid.uuid4())
         type_label = INTERVIEW_TYPE_LABELS.get(interview_type, interview_type)
 
         # 0. 解析自定义面试官阵容：将 persona:<id> 引用替换为稳定 key，并把人设快照进会话
         custom_config = await self._resolve_custom_config(custom_config, user_id)
+
+        # 0.5 目标企业与业务线真实场景匹配
+        if not company_scenario:
+            target_co = (custom_config or {}).get("target_company") or (custom_config or {}).get("company") or ""
+            company_scenario = scenario_service.match_scenario(
+                company=target_co,
+                industry=industry,
+                job_role=job_role
+            )
 
         # 1. Parse Resume and JD
         candidate_profile = await parser_service.parse_resume(resume_text, llm_config=llm_config)
@@ -93,6 +106,7 @@ class SessionManager:
             "style": style,
             "language": language,
             "custom_config": custom_config,
+            "company_scenario": company_scenario,
             "web_search_enabled": web_search_enabled,
             "round_count": 0,
             "max_rounds": max_rounds,
@@ -105,6 +119,7 @@ class SessionManager:
             "last_satisfaction_score": 0.0,
             "dig_action": "INIT",
             "follow_up_hint": None,
+            "break_routine_hint": None,
             "candidate_profile": candidate_profile,
             "jd_requirements": jd_requirements,
             "interview_mode": {
@@ -149,6 +164,7 @@ class SessionManager:
                     max_rounds=max_rounds,
                     elapsed_seconds=0,
                     web_search_enabled=web_search_enabled,
+                    company_scenario=company_scenario,
                     candidate_profile=candidate_profile,
                     jd_requirements=jd_requirements,
                     interview_state=dict(initial_state)
@@ -164,8 +180,9 @@ class SessionManager:
         self, custom_config: Optional[Dict[str, Any]], user_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        解析自定义面试配置中的自定义面试官引用：
+        解析自定义面试配置中的自定义面试官引用与内置流派预设：
         - selected_interviewers 中的 "persona:<人设ID>" 替换为该人设的稳定 key（persona_xxxx）
+        - selected_interviewers 中的 "preset_xxxx" 注入内置预设快照
         - 将引用到的完整人设快照进 custom_config.personas，并生成 persona_labels 便于展示
         之后编辑/删除人设不影响本场会话。
         """
@@ -180,35 +197,47 @@ class SessionManager:
             for entry in selected
             if isinstance(entry, str) and entry.startswith(PERSONA_REF_PREFIX)
         }
-        if not persona_id_set:
-            return custom_config
 
         snapshots: Dict[str, Dict[str, Any]] = {}
-        try:
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(
-                    select(InterviewerPersona).where(
-                        InterviewerPersona.id.in_(persona_id_set),
-                        InterviewerPersona.user_id == user_id,
-                        InterviewerPersona.enabled == True,  # noqa: E712
+
+        # 1. 注入内置流派预设快照
+        for entry in selected:
+            if isinstance(entry, str) and entry.startswith("preset_"):
+                for p in PERSONA_PRESETS:
+                    if p["key"] == entry:
+                        snapshots[entry] = p
+
+        if persona_id_set:
+            try:
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(
+                        select(InterviewerPersona).where(
+                            InterviewerPersona.id.in_(persona_id_set),
+                            InterviewerPersona.user_id == user_id,
+                            InterviewerPersona.enabled == True,  # noqa: E712
+                        )
                     )
-                )
-                for p in result.scalars().all():
-                    snapshots[p.id] = {
-                        "id": p.id,
-                        "key": p.key,
-                        "name": p.name,
-                        "avatar": p.avatar or "🎭",
-                        "description": p.description or "",
-                        "system_prompt": p.system_prompt,
-                        "focus_topics": p.focus_topics or [],
-                        "opening_hint": p.opening_hint or "",
-                        "deep_dive_hint": p.deep_dive_hint or "",
-                        "probe_hint": p.probe_hint or "",
-                        "switch_hint": p.switch_hint or "",
-                    }
-        except Exception as e:
-            logger.error(f"Failed to load persona snapshots for session: {e}")
+                    for p in result.scalars().all():
+                        snapshots[p.id] = {
+                            "id": p.id,
+                            "key": p.key,
+                            "name": p.name,
+                            "avatar": p.avatar or "🎭",
+                            "description": p.description or "",
+                            "system_prompt": p.system_prompt,
+                            "focus_topics": p.focus_topics or [],
+                            "opening_hint": p.opening_hint or "",
+                            "deep_dive_hint": p.deep_dive_hint or "",
+                            "probe_hint": p.probe_hint or "",
+                            "switch_hint": p.switch_hint or "",
+                            "school_of_thought": getattr(p, "school_of_thought", "standard") or "standard",
+                            "dislikes": getattr(p, "dislikes", []) or [],
+                            "preferences": getattr(p, "preferences", []) or [],
+                            "skepticism_level": float(getattr(p, "skepticism_level", 0.5) or 0.5),
+                            "interaction_traits": getattr(p, "interaction_traits", {}) or {},
+                        }
+            except Exception as e:
+                logger.error(f"Failed to load persona snapshots for session: {e}")
 
         resolved_lineup: List[str] = []
         for entry in selected:
@@ -216,7 +245,6 @@ class SessionManager:
                 snapshot = snapshots.get(entry.split(":", 1)[1])
                 if snapshot:
                     resolved_lineup.append(snapshot["key"])
-                # 引用的人设不存在/已停用时直接跳过，避免轮转出无效节点
             else:
                 resolved_lineup.append(entry)
 
@@ -243,7 +271,12 @@ class SessionManager:
         await self._sync_state_to_db(session_id, new_state)
         return new_state
 
-    async def submit_candidate_answer(self, session_id: str, user_message: str) -> Dict[str, Any]:
+    async def submit_candidate_answer(
+        self,
+        session_id: str,
+        user_message: str,
+        search_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         state = await self._ensure_state(session_id)
         if not state:
             raise ValueError(f"Session {session_id} not found")
@@ -261,7 +294,12 @@ class SessionManager:
         state["messages"] = state.get("messages", []) + [user_msg]
         state["status"] = "in_progress"
 
-        new_state = await interview_app.ainvoke(state)
+        run_config = (
+            {"configurable": {"search_config": search_config}}
+            if search_config
+            else None
+        )
+        new_state = await interview_app.ainvoke(state, config=run_config)
         self._sessions[session_id] = new_state
 
         await self._sync_state_to_db(session_id, new_state)
@@ -409,6 +447,14 @@ class SessionManager:
 
         state["status"] = "finished"
         report = await generate_evaluation_report(state)
+
+        # 触发面试官表现质检与自我进化闭环（沉淀黄金案例与避坑经验）
+        try:
+            audit_result = await audit_service.audit_session(state)
+            report["interviewer_audit"] = audit_result
+        except Exception as e:
+            logger.warning(f"Self-evolution audit failed: {e}")
+
         self._reports[session_id] = report
 
         # Persist report and update session in DB
@@ -563,6 +609,7 @@ class SessionManager:
                             "name": m.name,
                             "content": m.content,
                             "stage": m.stage,
+                            "search_metadata": m.search_metadata,
                             "timestamp": m.created_at.isoformat() if m.created_at else None,
                         }
                         for m in s.messages
@@ -636,6 +683,17 @@ class SessionManager:
             lines.append(f"**{speaker}** `{ts}`")
             lines.append("")
             lines.append((m.get("content") or "").strip())
+            search_meta = m.get("search_metadata") or {}
+            if search_meta.get("status") == "success":
+                lines.append("")
+                lines.append(f"_联网来源：{search_meta.get('provider', 'search')}_")
+                for source in search_meta.get("results") or []:
+                    title = source.get("title") or source.get("url") or "来源"
+                    url = source.get("url") or ""
+                    lines.append(f"- [{title}]({url})" if url else f"- {title}")
+            elif search_meta.get("status") == "failed":
+                message = search_meta.get("error_message") or "联网搜索失败"
+                lines.extend(["", f"_联网搜索未使用：{message}_"])
 
         observations = transcript.get("observations") or []
         if observations:
@@ -707,9 +765,17 @@ class SessionManager:
 
         radar_comparison = []
         deltas = {}
+
+        def _radar_value(radar: Dict[str, Any], key: str) -> float:
+            # live LLM 生成的报告在数据不足时可能把维度分返回为 null，缺省回退到中性分
+            try:
+                return float(radar.get(key, 7.0))
+            except (TypeError, ValueError):
+                return 7.0
+
         for key, name in dimensions:
-            s1 = float(radar1.get(key, 7.0))
-            s2 = float(radar2.get(key, 7.0))
+            s1 = _radar_value(radar1, key)
+            s2 = _radar_value(radar2, key)
             delta = round(s2 - s1, 2)
             radar_comparison.append({
                 "dimension": name,
@@ -839,10 +905,15 @@ class SessionManager:
                 name=m.get("name"),
                 content=m.get("content", ""),
                 stage=m.get("stage"),
+                search_metadata=m.get("search_metadata"),
                 created_at=created or datetime.utcnow(),
             ))
 
-    async def simulate_standard_answer(self, session_id: str) -> dict:
+    async def simulate_standard_answer(
+        self,
+        session_id: str,
+        search_config: Optional[Dict[str, Any]] = None,
+    ) -> dict:
         """
         Generates a first-person standard golden answer for the candidate
         based on the latest interviewer question, candidate profile, context, and optional web search.
@@ -884,11 +955,15 @@ class SessionManager:
         web_search_enabled = state.get("web_search_enabled", False)
 
         web_search_context = ""
+        search_outcome = None
         if web_search_enabled:
             search_query = f"{job_role} {question[:50]} 标准答案 最佳实践"
-            snippets = await search_service.search(search_query, max_results=2)
-            if snippets:
-                web_search_context = "【联网实时检索参考资料】:\n" + "\n".join([f"- {s['title']}: {s['snippet']}" for s in snippets])
+            search_outcome = await search_service.search(
+                search_query,
+                max_results=3,
+                config=search_config,
+            )
+            web_search_context = search_outcome.to_prompt_context()
 
         sys_msg = SIMULATE_ANSWER_PROMPT.format(
             interviewer=interviewer,
@@ -913,7 +988,8 @@ class SessionManager:
             "standard_answer": resp.content,
             "question": question,
             "interviewer": interviewer,
-            "web_search_used": web_search_enabled
+            "web_search_used": bool(search_outcome and search_outcome.succeeded),
+            "search_metadata": search_outcome.to_metadata() if search_outcome else None,
         }
 
     async def toggle_web_search(self, session_id: str, enabled: Optional[bool] = None) -> dict:

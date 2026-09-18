@@ -1,5 +1,7 @@
 import json
 import logging
+from typing import Optional
+
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import InterviewState
 from app.agents.prompts import SHADOW_OBSERVER_PROMPT
@@ -56,6 +58,14 @@ async def shadow_observer_node(state: InterviewState) -> dict:
     prior_action = state.get("dig_action", "INIT")
     prior_depth = state.get("topic_depth", 0)
 
+    # 定向考察清单：注入观察员提示词，并在换题缺提示时按清单轮转兜底
+    focus_list = [
+        t.strip()
+        for t in ((state.get("custom_config") or {}).get("focus_topics") or [])
+        if isinstance(t, str) and t.strip()
+    ]
+    focus_section = "、".join(focus_list) if focus_list else "未指定"
+
     if prior_action == "SWITCH_TOPIC":
         prior_depth = 0
 
@@ -71,6 +81,7 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         question=last_question,
         current_topic=current_topic or "首题或新主题",
         current_depth=prior_depth,
+        focus_section=focus_section,
         candidate_answer=candidate_answer,
         jd_requirements=str(jd_requirements)
     )
@@ -133,7 +144,25 @@ async def shadow_observer_node(state: InterviewState) -> dict:
     follow_up_hint = parsed_data.get("follow_up_hint")
     key_claim = parsed_data.get("key_claim")
 
-    # ── 深挖 / 换题决策策略 ──────────────────────────────────────────────
+    # 背诵套路识别
+    is_memorized = bool(parsed_data.get("is_memorized_recitation", False))
+    memorization_signals = parsed_data.get("memorization_signals") or []
+    break_routine_hint = parsed_data.get("break_routine_hint")
+
+    # ── 深挖 / 换题 / 破局决策策略 ───────────────────────────────────────
+    # 定向考察模式下换题兜底：观察员未给出下一考点提示时，轮转选取清单中尚未覆盖的第一项
+    covered_topics = {
+        log.get("topic")
+        for log in state.get("evaluation_logs") or []
+        if isinstance(log, dict)
+    }
+
+    def _next_focus_topic() -> Optional[str]:
+        for t in focus_list:
+            if t not in covered_topics:
+                return t
+        return None
+
     switch_reason = None
     if answer_status == "unknown" or satisfaction_score < 0.5:
         # 答不上来 / 答得很差：直接切换下一个知识点，并清空追问线索防止面试官继续纠缠
@@ -141,7 +170,13 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         dig_action = "SWITCH_TOPIC"
         switch_reason = "failed"
         follow_up_hint = None
-        target_topic = next_topic_hint or extracted_topic or active_topic
+        target_topic = next_topic_hint or _next_focus_topic() or extracted_topic or active_topic
+    elif is_memorized and prior_action != "BREAK_ROUTINE":
+        # 识别到教科书背诵套路：触发破局指令，推翻假设或突击线上故障，逼出真实水平
+        new_depth = min(prior_depth + 1, 5)
+        dig_action = "BREAK_ROUTINE"
+        target_topic = active_topic
+        follow_up_hint = break_routine_hint or "识别到背诵模板套路，请推翻原有方案假设或提出极端线上故障场景打破其准备好的八股说辞"
     elif satisfaction_score > 0.8:
         if prior_depth < 5:
             new_depth = prior_depth + 1
@@ -151,15 +186,15 @@ async def shadow_observer_node(state: InterviewState) -> dict:
             new_depth = 1
             dig_action = "SWITCH_TOPIC"
             switch_reason = "exhausted"
-            target_topic = next_topic_hint or extracted_topic or active_topic
+            target_topic = next_topic_hint or _next_focus_topic() or extracted_topic or active_topic
     else:
         # 0.5 ~ 0.8 浮于表面：给一次引导式追问机会；若上一轮已追问过仍无起色则换题
-        if prior_action == "PROBE_WEAKNESS":
+        if prior_action in ("PROBE_WEAKNESS", "BREAK_ROUTINE"):
             new_depth = 1
             dig_action = "SWITCH_TOPIC"
             switch_reason = "surface_repeated"
             follow_up_hint = None
-            target_topic = next_topic_hint or extracted_topic or active_topic
+            target_topic = next_topic_hint or _next_focus_topic() or extracted_topic or active_topic
         else:
             new_depth = min(prior_depth + 1, 5)
             dig_action = "PROBE_WEAKNESS"
@@ -187,7 +222,10 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         "depth_score": float(parsed_data.get("depth_score", 7.0)),
         "logic_score": float(parsed_data.get("logic_score", 7.0)),
         "star_compliance": float(parsed_data.get("star_compliance", 7.0)) if parsed_data.get("star_compliance") else None,
-        "flags": parsed_data.get("flags", [])
+        "flags": parsed_data.get("flags", []),
+        "is_memorized": is_memorized,
+        "memorization_signals": memorization_signals,
+        "break_routine_hint": break_routine_hint,
     }
 
     return {
@@ -200,5 +238,6 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         "switch_reason": switch_reason,
         "follow_up_hint": follow_up_hint,
         "next_topic_hint": next_topic_hint,
+        "break_routine_hint": break_routine_hint,
         "condensed_memory": updated_memory
     }

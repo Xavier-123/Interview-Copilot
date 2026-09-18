@@ -8,8 +8,10 @@ import { PersonaLibraryView } from './components/PersonaLibraryView';
 import { PrivacyModeProvider } from './context/PrivacyModeContext';
 import { AuthProvider } from './context/AuthContext';
 import { loadLLMConfig } from './utils/llmConfig';
+import { loadSearchConfig } from './utils/searchConfig';
+import { resolveInterviewerLineup } from './utils/interviewers';
 import type { PersonaDisplayInfo } from './utils/interviewers';
-import type { Message, EvaluationReport, InterviewType, IndustryType, SeniorityLevel, DifficultyLevel } from './types';
+import type { Message, EvaluationReport, InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, SimulateAnswerResult } from './types';
 
 export function App() {
   const [view, setView] = useState<'setup' | 'interview' | 'report' | 'history' | 'personas'>('setup');
@@ -25,6 +27,8 @@ export function App() {
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(false);
   const [activePersonas, setActivePersonas] = useState<PersonaDisplayInfo[]>([]);
+  // 本场实际出场的面试官角色 key（含主考官），面试官席位只展示这些成员
+  const [participantRoles, setParticipantRoles] = useState<string[]>([]);
 
   // Timer during interview (freeze when paused)
   useEffect(() => {
@@ -53,16 +57,22 @@ export function App() {
     webSearchEnabled: boolean;
     maxRounds?: number;
     customConfig?: any;
+    /** 本场出场自定义人设的展示信息（含 persona:<id> 引用） */
+    customPersonas?: PersonaDisplayInfo[];
   }) => {
     setIsThinking(true);
     setWebSearchEnabled(config.webSearchEnabled);
-    setActivePersonas(
-      (config.customConfig?.personas || []).map((p: any) => ({
-        key: p.key,
-        name: p.name,
-        avatar: p.avatar,
-        description: p.description,
-      }))
+    const personaDisplay = config.customPersonas || [];
+    setActivePersonas(personaDisplay);
+    setParticipantRoles(
+      resolveInterviewerLineup(config.interviewType, config.style, config.customConfig?.selected_interviewers).flatMap(
+        (entry) => {
+          if (!entry.startsWith('persona:')) return [entry];
+          // 无法解析的人设引用（如人设已被删除）与后端行为一致：直接剔除
+          const matched = personaDisplay.find((p) => p.ref === entry);
+          return matched ? [matched.key] : [];
+        }
+      )
     );
     try {
       const llmConfig = loadLLMConfig();
@@ -136,10 +146,14 @@ export function App() {
     setIsThinking(true);
 
     try {
+      const searchConfig = loadSearchConfig();
       const res = await fetch(`/api/v1/interviews/${sessionId}/answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({
+          message: text,
+          ...(searchConfig ? { search_config: searchConfig } : {}),
+        }),
       });
       const data = await res.json();
 
@@ -273,15 +287,20 @@ export function App() {
   };
 
   // 7.2 Simulate Standard Answer
-  const handleSimulateAnswer = async (): Promise<string | void> => {
+  const handleSimulateAnswer = async (): Promise<SimulateAnswerResult | void> => {
     if (!sessionId) return;
     try {
       const res = await fetch(`/api/v1/interviews/${sessionId}/simulate-answer`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ search_config: loadSearchConfig() }),
       });
       if (res.ok) {
         const data = await res.json();
-        return data.standard_answer;
+        return {
+          answer: data.standard_answer,
+          searchMetadata: data.search_metadata,
+        };
       } else {
         const err = await res.json();
         alert(err.detail || '构思标准回答失败');
@@ -346,6 +365,7 @@ export function App() {
     setElapsedSeconds(0);
     setStatus('ready');
     setActivePersonas([]);
+    setParticipantRoles([]);
     setView('setup');
   };
 
@@ -378,6 +398,7 @@ export function App() {
                 isThinking={isThinking}
                 shadowLogsCount={shadowLogsCount}
                 customPersonas={activePersonas}
+                participantRoles={participantRoles}
                 onSendMessage={handleSendMessage}
                 onRequestLifeline={handleRequestLifeline}
                 onFinishInterview={handleFinishInterview}

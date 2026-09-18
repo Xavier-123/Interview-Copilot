@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o")
     LLM_TEMPERATURE: float = 0.7
 
+    # Optional server-side default for real web search. Per-request credentials
+    # take precedence and are never persisted.
+    TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
+
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./interview_copilot.db")
 

@@ -34,9 +34,17 @@ async def init_db():
             await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN web_search_enabled BOOLEAN DEFAULT 0"))
         except Exception:
             pass  # Already exists or not needed
+        try:
+            await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN company_scenario JSON"))
+        except Exception:
+            pass
         # 消息顺序号列：用于 interview_messages 增量同步与回滚（幂等迁移）
         try:
             await conn.execute(text("ALTER TABLE interview_messages ADD COLUMN seq INTEGER"))
+        except Exception:
+            pass  # Already exists or not needed
+        try:
+            await conn.execute(text("ALTER TABLE interview_messages ADD COLUMN search_metadata JSON"))
         except Exception:
             pass  # Already exists or not needed
         try:
@@ -50,3 +58,15 @@ async def init_db():
             ))
         except Exception:
             pass  # Legacy rows already backfilled or table empty
+        # InterviewerPersona 流派画像字段
+        for col, dtype in [
+            ("school_of_thought", "VARCHAR(32) DEFAULT 'standard'"),
+            ("dislikes", "JSON"),
+            ("preferences", "JSON"),
+            ("skepticism_level", "FLOAT DEFAULT 0.5"),
+            ("interaction_traits", "JSON"),
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE interviewer_personas ADD COLUMN {col} {dtype}"))
+            except Exception:
+                pass

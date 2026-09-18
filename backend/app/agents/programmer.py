@@ -1,10 +1,12 @@
 from datetime import datetime
+from typing import Optional
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from app.agents.state import InterviewState
 from app.agents.prompts import PROGRAMMER_SPECIALIST_PROMPT
 from app.agents.llm import llm_service
 from app.agents import interviewer_utils
-from app.services.search import search_service
+from app.services.search import runtime_search_config, search_service
 
 # 综合程序员面试的模块推进计划：
 # 前 2 轮 -> 项目经历；最后 1 轮 -> 编码题；中间 -> 计算机基础知识点轮转
@@ -38,7 +40,7 @@ def current_module(state: InterviewState) -> str:
     return MODULE_FUNDAMENTALS
 
 
-async def programmer_node(state: InterviewState) -> dict:
+async def programmer_node(state: InterviewState, config: Optional[RunnableConfig] = None) -> dict:
     """
     Programmer Interviewer Node:
     经典综合程序员面：项目经历 -> 计算机基础知识点轮转 -> 轻量编码题，
@@ -60,24 +62,37 @@ async def programmer_node(state: InterviewState) -> dict:
         seniority=mode.get("seniority", "senior"),
         condensed_memory=state.get("condensed_memory", "") or "无",
         latest_user_input=state.get("latest_user_input", "") or "候选人已完成自我介绍，准备开始第一题"
-    )
+    ) + interviewer_utils.focus_topics_line(state)
 
     # Web search integration if enabled
     search_context = ""
+    search_outcome = None
     if state.get("web_search_enabled"):
         search_query = f"{industry} {job_role} 程序员面试 高频考点"
-        snippets = await search_service.search(search_query, max_results=2)
-        if snippets:
-            search_context = "\n【实时联网参考资料】:\n" + "\n".join([f"- {s['title']}: {s['snippet']}" for s in snippets])
+        search_outcome = await search_service.search(
+            search_query,
+            max_results=3,
+            config=runtime_search_config(config),
+        )
+        search_context = search_outcome.to_prompt_context()
 
     module = current_module(state)
     role_line = f"当前考察模块：【{module}】。{MODULE_GUIDANCE[module]}"
+    if module == MODULE_FUNDAMENTALS and interviewer_utils.get_focus_topics(state):
+        role_line += "（定向模式：知识点须从系统指令的【定向考察知识点】清单中选取）"
+
+    scenario_section = interviewer_utils.company_scenario_prompt_section(state)
 
     dig_action = state.get("dig_action", "INIT")
     if round_count == 0 or dig_action == "INIT":
         prompt = (
             f"你刚接过话筒，这是你的第一个问题。请先用一句话自然承接候选人的自我介绍"
             f"（点出其中一个亮点或与你关注点的关联），然后进入当前考察模块提问。\n{role_line}"
+        )
+    elif dig_action == "BREAK_ROUTINE":
+        prompt = interviewer_utils.build_break_routine_instruction(
+            state,
+            "请针对候选人刚才背诵的知识点，给出一段包含并发偶发Bug、死锁或非标业务限制的变种题，考验其脱稿分析能力。"
         )
     elif dig_action == "DEEP_DIVE":
         prompt = interviewer_utils.build_deep_dive_instruction(
@@ -92,7 +107,7 @@ async def programmer_node(state: InterviewState) -> dict:
     else:  # SWITCH_TOPIC
         prompt = interviewer_utils.build_switch_instruction(state, role_line)
 
-    prompt += f"{search_context}{interviewer_utils.QUESTION_LIMIT}"
+    prompt += f"{scenario_section}{search_context}{interviewer_utils.QUESTION_LIMIT}"
 
     resp = await llm_service.invoke(
         [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
@@ -107,6 +122,8 @@ async def programmer_node(state: InterviewState) -> dict:
         "stage": "programmer",
         "timestamp": datetime.now().isoformat()
     }
+    if search_outcome:
+        out_msg["search_metadata"] = search_outcome.to_metadata()
 
     return {
         "messages": [out_msg],

@@ -153,12 +153,14 @@ SHADOW_OBSERVER_PROMPT = """你是后台静默运行的【影子观察员 Agent 
 - "topic" 必须从"提出的问题"内容中提炼当前真正的考点，不要从候选人回答里挑无关的词；若考察方向与"当前考察主题背景"一致，沿用同一命名，不要改写。
 - "follow_up_hint" 必须符合提问面试官的职责方向：技术/程序员/管理/压力面给技术深度与方案层面的线索；HR/行为面只给行为动机、协作与价值观层面的线索，严禁给 HR/行为面试官任何技术实现类的追问线索。
 - "next_topic_hint" 必须与提问面试官的考察方向保持一致，且与当前主题属于不同领域。
+- 若"定向考察知识点清单"不是"未指定"："next_topic_hint" 必须从该清单中选取尚未考察过的方向（可对清单项做合理细分），严禁把清单之外的知识点作为 next_topic_hint；"topic" 的命名尽量与清单措辞保持一致。
 - 你的全部输出只能有一个 ```json 代码块：块外不允许任何解释性文字，块内不允许注释，不允许输出第二个代码块或多余对象，JSON 必须能被直接解析。
 
 输入信息：
 - 提问面试官：{interviewer}
 - 提出的问题：{question}
 - 当前考察主题背景：{current_topic} (当前挖掘深度: 第 {current_depth} 层)
+- 定向考察知识点清单：{focus_section}
 - 候选人的回答：{candidate_answer}
 - 岗位画像要求：{jd_requirements}
 
@@ -186,6 +188,9 @@ SHADOW_OBSERVER_PROMPT = """你是后台静默运行的【影子观察员 Agent 
   "follow_up_hint": "给下一轮面试官的针对性追问切入点（1句话指明候选人陈述中的薄弱点或矛盾点）",
   "next_topic_hint": "当需要切换考点时，建议的下一个知识点（必须与当前主题不同领域，结合岗位要求，4-15字）",
   "key_claim": "候选人本轮作答的核心主张或承诺（用于沉淀滚动记忆，如'声称通过Redisson分布式锁解决了秒杀超卖'）",
+  "is_memorized_recitation": false,
+  "memorization_signals": ["若检测到背诵八股或空洞套话，记录具体特征；无则返回空列表"],
+  "break_routine_hint": "若判定为背诵或套路作答，给出一个推翻假设或突发线上故障的非标场景指令打破套路（1句话）",
   "depth_score": 8.0,
   "logic_score": 8.0,
   "star_compliance": 7.0,
@@ -196,6 +201,7 @@ SHADOW_OBSERVER_PROMPT = """你是后台静默运行的【影子观察员 Agent 
 - satisfaction_score 严格为 0.0 到 1.0 的浮点数。
 - depth_score 与 logic_score 为 1.0 到 10.0。
 - answer_status 必须是 "unknown" | "poor" | "surface" | "solid" | "excellent" 之一。
+- is_memorized_recitation 为布尔值 (true/false)：当候选人仅背诵标准定义、列举教科书一二三点，但毫无项目实际细节与权衡取舍时判为 true。
 """
 
 REPORT_GENERATOR_PROMPT = """你是面试后的【多维评估与复盘首席诊断专家 (Chief Evaluation Architect)】。

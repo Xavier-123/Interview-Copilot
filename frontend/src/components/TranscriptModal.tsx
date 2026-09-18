@@ -14,6 +14,7 @@ import {
 import type { TranscriptData, TranscriptMessage } from '../types';
 import { interviewTypeLabel } from '../types';
 import { getInterviewerMeta } from '../utils/interviewers';
+import { SearchSources } from './SearchSources';
 
 interface TranscriptModalProps {
   sessionId: string;
@@ -57,6 +58,7 @@ const MessageBubble: React.FC<{ msg: TranscriptMessage; personaLabels?: Record<s
         </span>
         <div className="rounded-2xl rounded-bl-md bg-gray-800/80 border border-gray-700/60 text-gray-100 px-4 py-2.5 text-xs leading-relaxed whitespace-pre-wrap break-words">
           {msg.content}
+          <SearchSources metadata={msg.search_metadata} compact />
         </div>
       </div>
     </div>

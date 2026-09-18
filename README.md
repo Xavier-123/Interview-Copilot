@@ -14,13 +14,14 @@
    - **影子观察员 (Shadow Evaluator)**: 后台全程静默监听，实时提取亮点、失分点与量化得分，不干扰对话。
 
 2. **面试生命周期全流程覆盖**:
-   - **面试前**: 简历智能解析 + 目标岗位 JD 意图对齐 + 职级与风格定制（校招/社招/专家；温和/严谨/高压）。
+   - **面试前[app](backend/app)**: 简历智能解析 + 目标岗位 JD 意图对齐 + 职级与风格定制（校招/社招/专家；温和/严谨/高压）。
    - **面试中**: 多 Agent 动态交替发问、💡 求助提示 (Lifeline)、阶段流转指示与计时。
    - **面试后**: 六维能力雷达图（深度/广度/表达/STAR/抗压/匹配度）+ 逐题复盘 + **“优化示范回答 (Before vs After)”** + 针对性技能提升计划。
 
 3. **双模式自适应与高扩展性**:
    - **Zero-Config 本地测试模式**: 无需配置 API Key 即可一键体验完整的智能多 Agent 模拟面试。
    - **主流模型无缝接入**: 兼容 OpenAI (GPT-4o)、DeepSeek (V3/R1)、Qwen (通义千问)、Moonshot、Ollama 等任意 OpenAI-compatible 模型。
+   - **Tavily 真实联网搜索**: 技术类面试与模拟回答可引用实时网页结果，并保留可追溯来源；API Key 可仅保存在浏览器或通过后端环境变量提供。
 
 ---
 
@@ -53,6 +54,7 @@ pip install -r requirements.txt
 # (可选) 配置你的大模型 API 密钥，复制 .env.example
 copy .env.example .env
 # 编辑 .env 文件填入 LLM_API_KEY，如不填将自动启动内置智能 Mock 演示
+# 可选填写 TAVILY_API_KEY；也可在前端“配置搜索引擎”中仅为当前浏览器配置
 
 # 启动后端服务 (端口 8000)
 uvicorn app.main:app --reload --port 8000

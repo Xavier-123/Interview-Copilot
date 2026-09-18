@@ -1,12 +1,14 @@
 from datetime import datetime
+from typing import Optional
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from app.agents.state import InterviewState
 from app.agents.prompts import MANAGEMENT_SPECIALIST_PROMPT
 from app.agents.llm import llm_service
 from app.agents import interviewer_utils
-from app.services.search import search_service
+from app.services.search import runtime_search_config, search_service
 
-async def management_node(state: InterviewState) -> dict:
+async def management_node(state: InterviewState, config: Optional[RunnableConfig] = None) -> dict:
     """
     Management & Leadership Specialist Node:
     Assesses engineering management, team leadership, architectural governance,
@@ -26,15 +28,19 @@ async def management_node(state: InterviewState) -> dict:
         jd_requirements=str(jd_requirements),
         condensed_memory=state.get("condensed_memory", "") or "无前序陈述",
         latest_user_input=state.get("latest_user_input", "") or "准备开始管理岗与技术战略考核"
-    )
+    ) + interviewer_utils.focus_topics_line(state)
 
     # Web search integration if enabled
     search_context = ""
+    search_outcome = None
     if state.get("web_search_enabled"):
         search_query = f"{industry} {job_role} 管理考点 团队效能 OKR"
-        snippets = await search_service.search(search_query, max_results=2)
-        if snippets:
-            search_context = "\n【实时联网参考资料】:\n" + "\n".join([f"- {s['title']}: {s['snippet']}" for s in snippets])
+        search_outcome = await search_service.search(
+            search_query,
+            max_results=3,
+            config=runtime_search_config(config),
+        )
+        search_context = search_outcome.to_prompt_context()
 
     dig_action = state.get("dig_action", "INIT")
     role_line = "请转向另一个管理考察维度（梯队建设与激励、技术战略与债务治理、跨部门协同、事故复盘与危机处理等）。"
@@ -72,6 +78,8 @@ async def management_node(state: InterviewState) -> dict:
         "stage": "management",
         "timestamp": datetime.now().isoformat()
     }
+    if search_outcome:
+        out_msg["search_metadata"] = search_outcome.to_metadata()
 
     return {
         "messages": [out_msg],

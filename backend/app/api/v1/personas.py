@@ -35,6 +35,11 @@ def _persona_snapshot(p: InterviewerPersona) -> dict:
         "deep_dive_hint": p.deep_dive_hint or "",
         "probe_hint": p.probe_hint or "",
         "switch_hint": p.switch_hint or "",
+        "school_of_thought": getattr(p, "school_of_thought", "standard") or "standard",
+        "dislikes": getattr(p, "dislikes", []) or [],
+        "preferences": getattr(p, "preferences", []) or [],
+        "skepticism_level": float(getattr(p, "skepticism_level", 0.5) or 0.5),
+        "interaction_traits": getattr(p, "interaction_traits", {}) or {},
     }
 
 
@@ -56,6 +61,11 @@ class PersonaPayload(BaseModel):
     deep_dive_hint: str = Field(default="", max_length=400)
     probe_hint: str = Field(default="", max_length=400)
     switch_hint: str = Field(default="", max_length=400)
+    school_of_thought: Optional[str] = Field(default="standard", max_length=32)
+    dislikes: List[str] = Field(default_factory=list)
+    preferences: List[str] = Field(default_factory=list)
+    skepticism_level: float = Field(default=0.5, ge=0.0, le=1.0)
+    interaction_traits: Optional[dict] = Field(default_factory=dict)
     enabled: bool = True
 
     @field_validator("focus_topics")
@@ -76,6 +86,13 @@ async def _get_owned_persona(persona_id: str, user: User, db: AsyncSession) -> I
     if not persona:
         raise HTTPException(status_code=404, detail="面试官角色不存在")
     return persona
+
+
+@router.get("/presets")
+async def get_persona_presets():
+    """获取系统内置的高拟真流派面试官预设列表（排障老炮、源码极客、业务ROI、防套路打假官）。"""
+    from app.agents.persona_presets import PERSONA_PRESETS
+    return {"presets": PERSONA_PRESETS}
 
 
 @router.get("")
@@ -112,6 +129,11 @@ async def create_persona(
         deep_dive_hint=payload.deep_dive_hint.strip(),
         probe_hint=payload.probe_hint.strip(),
         switch_hint=payload.switch_hint.strip(),
+        school_of_thought=payload.school_of_thought or "standard",
+        dislikes=payload.dislikes or [],
+        preferences=payload.preferences or [],
+        skepticism_level=payload.skepticism_level,
+        interaction_traits=payload.interaction_traits or {},
         enabled=payload.enabled,
     )
     db.add(persona)
@@ -138,6 +160,11 @@ async def update_persona(
     persona.deep_dive_hint = payload.deep_dive_hint.strip()
     persona.probe_hint = payload.probe_hint.strip()
     persona.switch_hint = payload.switch_hint.strip()
+    persona.school_of_thought = payload.school_of_thought or "standard"
+    persona.dislikes = payload.dislikes or []
+    persona.preferences = payload.preferences or []
+    persona.skepticism_level = payload.skepticism_level
+    persona.interaction_traits = payload.interaction_traits or {}
     persona.enabled = payload.enabled
     await db.commit()
     await db.refresh(persona)

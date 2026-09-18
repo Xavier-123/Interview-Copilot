@@ -8,6 +8,7 @@ class MessageItem(TypedDict):
     content: str
     stage: Optional[str]
     timestamp: Optional[str]
+    search_metadata: Optional[Dict[str, Any]]
 
 class ShadowObservation(TypedDict):
     round_index: int
@@ -24,6 +25,9 @@ class ShadowObservation(TypedDict):
     logic_score: float              # 1-10
     star_compliance: Optional[float] # 1-10 (for behavioral questions)
     flags: List[str]                # e.g., ["vague_answer", "good_quantification", "nervous"]
+    is_memorized: Optional[bool]    # 是否判定为背诵/套路化模板回答
+    memorization_signals: Optional[List[str]] # 背诵特征（如：教科书编号、缺少项目细节、无权衡说明）
+    break_routine_hint: Optional[str] # 针对背诵特征的破局追问提示
 
 class InterviewStateBase(TypedDict):
     # Session metadata
@@ -43,6 +47,7 @@ class InterviewStateBase(TypedDict):
     style: str                      # gentle | rigorous | stress
     language: str                   # zh | en
     custom_config: Optional[Dict[str, Any]] # custom interviewers and topic tags
+    company_scenario: Optional[Dict[str, Any]] # 注入的具体大厂/业务线真实场景卡片
     web_search_enabled: bool        # Whether web search is enabled
     
     # Round & Control
@@ -58,10 +63,11 @@ class InterviewStateBase(TypedDict):
     topic_depth: int                   # Current digging depth for this topic (0 - 5)
     last_satisfaction_score: float     # Last answer satisfaction score (0.0 - 1.0)
     last_answer_status: str            # unknown | poor | surface | solid | excellent (由影子观察员判定)
-    dig_action: str                    # "INIT" | "DEEP_DIVE" | "SWITCH_TOPIC" | "PROBE_WEAKNESS"
+    dig_action: str                    # "INIT" | "DEEP_DIVE" | "SWITCH_TOPIC" | "PROBE_WEAKNESS" | "BREAK_ROUTINE"
     switch_reason: Optional[str]       # SWITCH_TOPIC 细分原因: failed | exhausted | surface_repeated
     next_topic_hint: Optional[str]     # 影子观察员建议的下一个知识点（换题时优先采用）
     follow_up_hint: Optional[str]      # Specific clue for next prompt
+    break_routine_hint: Optional[str]  # 针对背诵或泛泛而谈的破局非标场景追问指令
     
     # Candidate & Job Context
     candidate_profile: Dict[str, Any]  # name, skills, projects, experience_years, highlights

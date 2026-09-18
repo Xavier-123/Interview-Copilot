@@ -11,6 +11,8 @@ export interface PersonaDisplayInfo {
   name: string;
   avatar?: string;
   description?: string;
+  /** 会话创建时的引用形式（persona:<人设ID>），用于把阵容条目映射回稳定 key */
+  ref?: string;
 }
 
 export interface InterviewerMeta {
@@ -24,7 +26,7 @@ export interface InterviewerMeta {
 }
 
 export const isPersonaKey = (name?: string | null): boolean =>
-  !!name && name.startsWith('persona_');
+  !!name && (name.startsWith('persona_') || name.startsWith('preset_'));
 
 const BUILTIN_META: Record<string, InterviewerMeta> = {
   orchestrator: {
@@ -136,3 +138,39 @@ export const FALLBACK_INTERVIEWER_META: InterviewerMeta = {
   gradient: 'from-blue-600 to-indigo-700',
   icon: Bot,
 };
+
+/**
+ * 解析本场面试实际出场的面试官阵容（角色 key 有序列表），面试官席位只展示这些成员。
+ * 规则与后端 graph.py 的 entry_router / after_observer_route 路由保持一致：
+ * - 所有面试类型均由主考官（orchestrator）开场；
+ * - 压力风格（style === 'stress'）会在技术/程序员/管理岗面试中途插入挑战官；
+ * - custom 类型按 custom_config.selected_interviewers 的顺序轮转出场。
+ * persona:<id> 引用条目原样返回，调用方负责映射为消息中的稳定 key（persona_xxxx）。
+ */
+export function resolveInterviewerLineup(
+  interviewType?: string | null,
+  style?: string | null,
+  customSelected?: string[] | null
+): string[] {
+  const withChallenger = style === 'stress' ? ['challenger'] : [];
+  switch (interviewType) {
+    case 'technical':
+      return ['orchestrator', 'technical', ...withChallenger];
+    case 'programmer':
+      return ['orchestrator', 'programmer', ...withChallenger];
+    case 'behavioral':
+    case 'hr':
+      return ['orchestrator', 'hr'];
+    case 'management':
+      return ['orchestrator', 'management', ...withChallenger];
+    case 'custom': {
+      const entries = (customSelected || []).filter((e): e is string => !!e);
+      if (!entries.length) return ['orchestrator', 'technical', 'hr'];
+      return ['orchestrator', ...entries];
+    }
+    case 'structured':
+    case 'english':
+    default:
+      return ['orchestrator', 'technical', 'hr', ...withChallenger];
+  }
+}
