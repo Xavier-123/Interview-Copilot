@@ -1,6 +1,7 @@
 export type InterviewerType =
   | 'orchestrator'
   | 'technical'
+  | 'programmer'
   | 'hr'
   | 'challenger'
   | 'observer'
@@ -8,12 +9,28 @@ export type InterviewerType =
 
 export type InterviewType =
   | 'technical'
+  | 'programmer'
   | 'behavioral'
   | 'hr'
   | 'management'
   | 'english'
   | 'structured'
   | 'custom';
+
+// 面试类型中文标签（历史记录、对话导出等展示场景）
+export const INTERVIEW_TYPE_LABELS: Record<string, string> = {
+  structured: '结构化全流程',
+  technical: '技术深度面',
+  programmer: '程序员综合面',
+  behavioral: 'STAR行为面',
+  hr: 'HR综合面',
+  management: '管理岗面',
+  english: '英语全真面',
+  custom: '自选定制面',
+};
+
+export const interviewTypeLabel = (type?: string | null): string =>
+  (type && INTERVIEW_TYPE_LABELS[type]) || type || '-';
 
 export type IndustryType =
   | '互联网/电商'
@@ -39,10 +56,69 @@ export interface LLMConfig {
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
-  name?: 'orchestrator' | 'technical' | 'hr' | 'challenger' | 'management' | 'candidate';
+  name?: string; // 内置角色 key 或自定义人设 key（persona_xxxx）
   content: string;
   stage?: string;
   timestamp?: string;
+}
+
+export interface TranscriptMessage {
+  role: 'user' | 'assistant' | 'system';
+  name?: string;
+  content: string;
+  stage?: string;
+  timestamp?: string;
+}
+
+export interface TranscriptObservation {
+  round_index?: number;
+  interviewer?: string;
+  question?: string;
+  topic?: string;
+  satisfaction_score?: number;
+  answer_status?: string;
+  strengths?: string[];
+  weaknesses?: string[];
+}
+
+export interface TranscriptData {
+  session: {
+    session_id?: string;
+    title?: string;
+    interview_type?: string;
+    industry?: string;
+    job_role?: string;
+    seniority?: string;
+    difficulty?: string;
+    style?: string;
+    language?: string;
+    status?: string;
+    round_count?: number;
+    elapsed_seconds?: number;
+    created_at?: string;
+  };
+  messages: TranscriptMessage[];
+  observations?: TranscriptObservation[];
+  persona_labels?: Record<string, string>;
+  report?: EvaluationReport | null;
+}
+
+// 自定义面试官角色（人设）
+export interface Persona {
+  id: string;
+  key: string;
+  name: string;
+  avatar: string;
+  description: string;
+  system_prompt: string;
+  focus_topics: string[];
+  opening_hint?: string;
+  deep_dive_hint?: string;
+  probe_hint?: string;
+  switch_hint?: string;
+  enabled?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface ShadowObservation {
@@ -162,6 +238,7 @@ export interface HistorySessionItem {
   seniority: string;
   difficulty: string;
   status: 'ready' | 'in_progress' | 'waiting_user' | 'paused' | 'finished';
+  web_search_enabled?: boolean;
   round_count: number;
   elapsed_seconds: number;
   created_at: string;

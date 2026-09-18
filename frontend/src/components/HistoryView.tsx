@@ -7,10 +7,13 @@ import {
   TrendingUp,
   FileText,
   CheckSquare,
-  Square
+  Square,
+  MessageSquare
 } from 'lucide-react';
 import type { HistorySessionItem } from '../types';
+import { interviewTypeLabel } from '../types';
 import { ComparisonModal } from './ComparisonModal';
+import { TranscriptModal } from './TranscriptModal';
 
 interface HistoryViewProps {
   onBack: () => void;
@@ -22,6 +25,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
   const [loading, setLoading] = useState(true);
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [showComparison, setShowComparison] = useState(false);
+  const [transcriptSessionId, setTranscriptSessionId] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -208,7 +212,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
                       {item.job_role}
                     </span>
                     <span className="px-2 py-0.5 rounded-md bg-blue-950/60 text-blue-300 border border-blue-900/50">
-                      类型：{item.interview_type}
+                      类型：{interviewTypeLabel(item.interview_type)}
                     </span>
                     <span className="px-2 py-0.5 rounded-md bg-gray-950 text-gray-400 border border-gray-800">
                       共 {item.round_count} 轮问答
@@ -239,14 +243,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
                     </span>
                   </div>
 
-                  {item.has_report ? (
-                    <span className="text-blue-400 font-medium flex items-center space-x-1">
-                      <span>查看深度复盘</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </span>
-                  ) : (
-                    <span className="text-gray-600">未完成报告</span>
-                  )}
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTranscriptSessionId(item.session_id);
+                      }}
+                      className="inline-flex items-center space-x-1 text-blue-400 hover:text-blue-300 font-medium transition"
+                      title="在线回看完整对话记录"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      <span>查看对话</span>
+                    </button>
+                    {item.has_report ? (
+                      <span className="text-blue-400 font-medium flex items-center space-x-1">
+                        <span>查看深度复盘</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </span>
+                    ) : (
+                      <span className="text-gray-600">未完成报告</span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -261,6 +279,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
           sessionId1={selectedSessions[0]}
           sessionId2={selectedSessions[1]}
           onClose={() => setShowComparison(false)}
+        />
+      )}
+
+      {/* Transcript Modal */}
+      {transcriptSessionId && (
+        <TranscriptModal
+          sessionId={transcriptSessionId}
+          onClose={() => setTranscriptSessionId(null)}
         />
       )}
     </div>

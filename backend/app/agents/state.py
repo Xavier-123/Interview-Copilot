@@ -4,7 +4,7 @@ import operator
 
 class MessageItem(TypedDict):
     role: str               # "user" | "assistant" | "system"
-    name: Optional[str]     # "orchestrator" | "technical" | "hr" | "challenger" | "management" | "candidate"
+    name: Optional[str]     # "orchestrator" | "technical" | "programmer" | "hr" | "challenger" | "management" | "candidate"
     content: str
     stage: Optional[str]
     timestamp: Optional[str]
@@ -35,7 +35,7 @@ class InterviewStateBase(TypedDict):
     next_interviewer: Optional[str]
     
     # Interview Configuration
-    interview_type: str             # technical | behavioral | hr | management | english | structured | custom
+    interview_type: str             # technical | programmer | behavioral | hr | management | english | structured | custom
     industry: str                   # 互联网/电商 | 人工智能/大模型 | 金融科技/量化 | ...
     job_role: str                   # 后端开发 | 前端开发 | AI算法 | ...
     seniority: str                  # junior | senior | expert | director
@@ -43,6 +43,7 @@ class InterviewStateBase(TypedDict):
     style: str                      # gentle | rigorous | stress
     language: str                   # zh | en
     custom_config: Optional[Dict[str, Any]] # custom interviewers and topic tags
+    web_search_enabled: bool        # Whether web search is enabled
     
     # Round & Control
     round_count: int
@@ -56,7 +57,10 @@ class InterviewStateBase(TypedDict):
     current_topic: Optional[str]       # Current topic being explored (e.g., "Redis缓存一致性")
     topic_depth: int                   # Current digging depth for this topic (0 - 5)
     last_satisfaction_score: float     # Last answer satisfaction score (0.0 - 1.0)
+    last_answer_status: str            # unknown | poor | surface | solid | excellent (由影子观察员判定)
     dig_action: str                    # "INIT" | "DEEP_DIVE" | "SWITCH_TOPIC" | "PROBE_WEAKNESS"
+    switch_reason: Optional[str]       # SWITCH_TOPIC 细分原因: failed | exhausted | surface_repeated
+    next_topic_hint: Optional[str]     # 影子观察员建议的下一个知识点（换题时优先采用）
     follow_up_hint: Optional[str]      # Specific clue for next prompt
     
     # Candidate & Job Context

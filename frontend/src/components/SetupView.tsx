@@ -13,11 +13,12 @@ import {
   Globe,
   Users,
   Code2,
+  Terminal,
   Sliders
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { loadLLMConfig } from '../utils/llmConfig';
-import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel } from '../types';
+import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, Persona } from '../types';
 
 interface SetupViewProps {
   onStartInterview: (config: {
@@ -30,6 +31,8 @@ interface SetupViewProps {
     difficulty: DifficultyLevel;
     style: string;
     language: string;
+    webSearchEnabled: boolean;
+    maxRounds?: number;
     customConfig?: any;
   }) => void;
   isLoading: boolean;
@@ -145,6 +148,13 @@ const INTERVIEW_TYPE_OPTIONS: Array<{
     color: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-300',
   },
   {
+    type: 'programmer',
+    title: '程序员综合面',
+    subtitle: '项目经历 + 计算机基础轮转 + 代码题，经典大厂一二面全真流程',
+    icon: Terminal,
+    color: 'border-orange-500/50 bg-orange-950/20 text-orange-300',
+  },
+  {
     type: 'behavioral',
     title: 'STAR 行为面试',
     subtitle: '情境/任务/行动/结果，团队沟通与复杂冲突',
@@ -195,6 +205,7 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
   const [interviewType, setInterviewType] = useState<InterviewType>('structured');
   const [style, setStyle] = useState('rigorous');
   const [language, setLanguage] = useState('zh');
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   // Custom interview config
   const [customSelectedInterviewers, setCustomSelectedInterviewers] = useState<string[]>([
@@ -202,6 +213,7 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
     'hr',
   ]);
   const [customFocusTopics, setCustomFocusTopics] = useState('分布式锁, MySQL MVCC, Kafka异步解耦');
+  const [myPersonas, setMyPersonas] = useState<Persona[]>([]);
 
   // Uploading status
   const [isUploading, setIsUploading] = useState(false);
@@ -211,6 +223,19 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
   const [userResumes, setUserResumes] = useState<Array<{ id: string; filename: string; raw_text_preview: string }>>([]);
 
   const customModel = loadLLMConfig()?.model;
+
+  // Fetch user's custom personas for the custom-interview lineup
+  useEffect(() => {
+    const token = localStorage.getItem('interview_copilot_token');
+    if (!token) {
+      setMyPersonas([]);
+      return;
+    }
+    fetch('/api/v1/personas', { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : { personas: [] }))
+      .then((data) => setMyPersonas(data.personas || []))
+      .catch(() => setMyPersonas([]));
+  }, [user]);
 
   // Load user profile defaults when available
   useEffect(() => {
@@ -312,6 +337,8 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
       difficulty,
       style,
       language,
+      webSearchEnabled,
+      maxRounds: interviewType === 'programmer' ? 8 : 6,
       customConfig:
         interviewType === 'custom'
           ? {
@@ -393,10 +420,10 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
                 <Sliders className="w-3.5 h-3.5" />
                 <span>自定义面试阵容与考察重心</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    指定出场面试官 (可多选)
+                  <label className="block text-xs text-gray-400 mb-1.5">
+                    指定出场面试官 (可多选，按选择顺序出场)
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {[
@@ -404,6 +431,7 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
                       { key: 'hr', label: 'HR/行为官' },
                       { key: 'management', label: '管理岗专家' },
                       { key: 'challenger', label: '压力挑战官' },
+                      { key: 'programmer', label: '程序员综合官' },
                     ].map((role) => {
                       const active = customSelectedInterviewers.includes(role.key);
                       return (
@@ -436,6 +464,87 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
                     })}
                   </div>
                 </div>
+
+                {myPersonas.length > 0 && (
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1.5">
+                      <span className="text-violet-300 font-medium">我的角色</span>
+                      （来自角色库）
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {myPersonas.map((p) => {
+                        const entry = `persona:${p.id}`;
+                        const active = customSelectedInterviewers.includes(entry);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            title={p.description || p.system_prompt.slice(0, 60)}
+                            onClick={() => {
+                              if (active) {
+                                if (customSelectedInterviewers.length > 1) {
+                                  setCustomSelectedInterviewers(
+                                    customSelectedInterviewers.filter((k) => k !== entry)
+                                  );
+                                }
+                              } else {
+                                setCustomSelectedInterviewers([
+                                  ...customSelectedInterviewers,
+                                  entry,
+                                ]);
+                              }
+                            }}
+                            className={`flex items-center space-x-1 text-xs px-3 py-1.5 rounded-lg border transition ${
+                              active
+                                ? 'bg-violet-600/30 border-violet-500 text-violet-200'
+                                : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200'
+                            }`}
+                          >
+                            <span>{p.avatar || '🎭'}</span>
+                            <span>{p.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {(() => {
+                  const resolveLabel = (entry: string) => {
+                    if (entry.startsWith('persona:')) {
+                      const p = myPersonas.find((x) => `persona:${x.id}` === entry);
+                      return `${p?.avatar || '🎭'} ${p?.name || '自定义角色'}`;
+                    }
+                    return (
+                      {
+                        technical: '技术专家',
+                        hr: 'HR/行为官',
+                        management: '管理岗专家',
+                        challenger: '压力挑战官',
+                        programmer: '程序员综合官',
+                      } as Record<string, string>
+                    )[entry] || entry;
+                  };
+                  return (
+                    <div className="text-[11px] text-gray-500 bg-gray-900/60 border border-gray-800 rounded-lg px-3 py-2">
+                      <span className="text-gray-400">出场顺序：</span>
+                      {customSelectedInterviewers.map((entry, i) => (
+                        <span key={entry}>
+                          {i > 0 && <span className="text-gray-600"> → </span>}
+                          <span className="text-gray-300">{i + 1}. {resolveLabel(entry)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {myPersonas.length === 0 && (
+                  <div className="text-[11px] text-gray-500">
+                    💡 想加入自设计的面试官？点击顶部
+                    <span className="text-violet-300">「角色库」</span>
+                    创建你的专属角色。
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">
@@ -731,6 +840,40 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
                 <option value="en">全英文交流 (English Mock Interview)</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        {/* Web Search Feature Switch */}
+        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 transition-colors hover:border-blue-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-start space-x-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 mt-0.5 shadow-inner">
+                <Globe className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-semibold text-gray-200">
+                    联网搜索功能 (Web Search)
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white tracking-wide">
+                    NEW
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1 max-w-xl leading-relaxed">
+                  开启后，面试官提问与 AI 模拟回答助手将实时联网检索最新技术规范、大厂高频面试真题与最佳实践方案（面试中亦可在顶部随时切换）。
+                </p>
+              </div>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer ml-4">
+              <input
+                type="checkbox"
+                checked={webSearchEnabled}
+                onChange={(e) => setWebSearchEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
           </div>
         </div>
 

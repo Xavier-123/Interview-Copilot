@@ -3,19 +3,19 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import InterviewState
 from app.agents.prompts import MANAGEMENT_SPECIALIST_PROMPT
 from app.agents.llm import llm_service
+from app.agents import interviewer_utils
+from app.services.search import search_service
 
 async def management_node(state: InterviewState) -> dict:
     """
     Management & Leadership Specialist Node:
     Assesses engineering management, team leadership, architectural governance,
     cross-functional negotiation, and incident resolution.
+    Consumes the unified dig_action decision from the shadow observer.
     """
     candidate_profile = state.get("candidate_profile", {})
     jd_requirements = state.get("jd_requirements", {})
-    latest_input = state.get("latest_user_input", "")
     round_count = state.get("round_count", 0)
-    condensed_memory = state.get("condensed_memory", "")
-    follow_up_hint = state.get("follow_up_hint", "")
     industry = state.get("industry", "互联网/电商")
     job_role = state.get("job_role", "技术管理者/总监")
 
@@ -24,26 +24,40 @@ async def management_node(state: InterviewState) -> dict:
         job_role=job_role,
         candidate_profile=str(candidate_profile),
         jd_requirements=str(jd_requirements),
-        condensed_memory=condensed_memory or "无前序陈述",
-        latest_user_input=latest_input or "准备开始管理岗与技术战略考核"
+        condensed_memory=state.get("condensed_memory", "") or "无前序陈述",
+        latest_user_input=state.get("latest_user_input", "") or "准备开始管理岗与技术战略考核"
     )
 
-    if round_count == 0:
+    # Web search integration if enabled
+    search_context = ""
+    if state.get("web_search_enabled"):
+        search_query = f"{industry} {job_role} 管理考点 团队效能 OKR"
+        snippets = await search_service.search(search_query, max_results=2)
+        if snippets:
+            search_context = "\n【实时联网参考资料】:\n" + "\n".join([f"- {s['title']}: {s['snippet']}" for s in snippets])
+
+    dig_action = state.get("dig_action", "INIT")
+    role_line = "请转向另一个管理考察维度（梯队建设与激励、技术战略与债务治理、跨部门协同、事故复盘与危机处理等）。"
+
+    if round_count == 0 or dig_action == "INIT":
         prompt = (
             f"这是管理岗面试的第一个问题。请结合候选人过往经历与【{industry}】行业特点，"
             f"提出一个考察团队梯队建设、研发效能度量或技术债务治理的实战决策问题。"
         )
-    elif follow_up_hint:
-        prompt = (
-            f"候选人刚才回答：'{latest_input}'。\n"
-            f"影子观察员建议追问点：【{follow_up_hint}】。\n"
-            f"提问要求：请结合此追问点，从管理抓手、跨团队博弈或重大风险推演的视角进行针对性深度追问。"
+    elif dig_action == "DEEP_DIVE":
+        prompt = interviewer_utils.build_deep_dive_instruction(
+            state,
+            "请就当前管理话题追问更具体的管理动作、权衡依据与推动结果。"
         )
-    else:
-        prompt = (
-            f"候选人刚才回答：'{latest_input}'。\n"
-            f"请简要得体点评，并针对重大线上事故责任复盘或跨部门资源协调提出下一个管理维度问题。"
+    elif dig_action == "PROBE_WEAKNESS":
+        prompt = interviewer_utils.build_probe_instruction(
+            state,
+            "请引导候选人补充真实案例细节（当时的阻力、具体采取的管理抓手与最终结果）。"
         )
+    else:  # SWITCH_TOPIC
+        prompt = interviewer_utils.build_switch_instruction(state, role_line)
+
+    prompt += f"{search_context}{interviewer_utils.QUESTION_LIMIT}"
 
     resp = await llm_service.invoke(
         [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],

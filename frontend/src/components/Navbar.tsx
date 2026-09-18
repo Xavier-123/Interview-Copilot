@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bot, Sparkles, Clock, Shield, ShieldAlert, Settings, History, User, LogIn } from 'lucide-react';
+import { Bot, Sparkles, Clock, Shield, ShieldAlert, Settings, History, User, LogIn, Users2 } from 'lucide-react';
 import { usePrivacyMode } from '../context/privacyContext';
 import { useAuth } from '../context/AuthContext';
 import { SettingsModal } from './SettingsModal';
@@ -12,6 +12,7 @@ interface NavbarProps {
   elapsedSeconds: number;
   status: string;
   onNavigateHistory?: () => void;
+  onNavigatePersonas?: () => void;
   onNavigateHome?: () => void;
 }
 
@@ -19,6 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentStage,
   elapsedSeconds,
   onNavigateHistory,
+  onNavigatePersonas,
   onNavigateHome,
 }) => {
   const { isPrivacyMode, togglePrivacyMode } = usePrivacyMode();
@@ -105,6 +107,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Status & Controls */}
         <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Persona Library Button */}
+          {onNavigatePersonas && (
+            <button
+              type="button"
+              onClick={onNavigatePersonas}
+              title="创建和管理你的自定义面试官角色"
+              className="flex items-center space-x-1 text-xs px-2.5 sm:px-3 py-1.5 rounded-lg bg-gray-900/80 hover:bg-gray-800 border border-gray-800 hover:border-violet-700/60 text-gray-300 transition cursor-pointer"
+            >
+              <Users2 className="w-3.5 h-3.5 text-violet-400" />
+              <span className="hidden sm:inline">角色库</span>
+            </button>
+          )}
+
           {/* History Button */}
           {onNavigateHistory && (
             <button

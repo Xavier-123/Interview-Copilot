@@ -9,10 +9,14 @@ from app.agents.orchestrator import (
     orchestrator_conclusion
 )
 from app.agents.technical import technical_node
+from app.agents.programmer import programmer_node
 from app.agents.hr import hr_node
 from app.agents.challenger import challenger_node
 from app.agents.management import management_node
+from app.agents.persona_node import persona_node, resolve_custom_role, is_persona_key
 from app.agents.observer import shadow_observer_node
+
+CUSTOM_INTERVIEWER_NODES = ("technical", "programmer", "hr", "challenger", "management")
 
 def after_observer_route(state: InterviewState) -> str:
     interview_type = state.get("interview_type", "structured")
@@ -34,6 +38,14 @@ def after_observer_route(state: InterviewState) -> str:
             return "challenger"
         return "technical"
 
+    # 1.5 Programmer comprehensive interview (项目经历 -> 计算机基础 -> 编码题)
+    if interview_type == "programmer":
+        if round_count >= (max_rounds - 1):
+            return "orchestrator_to_qa"
+        if style == "stress" and not stress_triggered and round_count == 2:
+            return "challenger"
+        return "programmer"
+
     # 2. Behavioral / HR-only interview
     if interview_type in ("behavioral", "hr"):
         if round_count >= (max_rounds - 1):
@@ -48,21 +60,15 @@ def after_observer_route(state: InterviewState) -> str:
             return "challenger"
         return "management"
 
-    # 4. Custom interview
+    # 4. Custom interview（阵容 = 内置角色 key 或自定义人设 key，按轮次轮转）
     if interview_type == "custom":
-        custom_cfg = state.get("custom_config", {}) or {}
-        selected_interviewers = custom_cfg.get("selected_interviewers", ["technical", "hr"])
         if round_count >= (max_rounds - 1):
             return "orchestrator_to_qa"
-        # Cycle through selected interviewers
-        idx = round_count % len(selected_interviewers)
-        next_role = selected_interviewers[idx]
-        if next_role == "management":
-            return "management"
-        elif next_role == "hr":
-            return "hr"
-        elif next_role == "challenger":
-            return "challenger"
+        next_role = resolve_custom_role(state) or "technical"
+        if is_persona_key(next_role):
+            return "custom_persona"
+        if next_role in CUSTOM_INTERVIEWER_NODES:
+            return next_role
         return "technical"
 
     # 5. Default: Structured / English full-lifecycle interview
@@ -91,14 +97,24 @@ def entry_router(state: InterviewState) -> str:
     if stage == "icebreak":
         return "orchestrator_welcome"
     elif stage == "self_intro":
+        if interview_type == "custom":
+            # 自定义面试：首个问题交给出场阵容的第一位（内置角色或自定义人设）
+            first_role = resolve_custom_role(state) or "technical"
+            if is_persona_key(first_role):
+                return "custom_persona"
+            if first_role in CUSTOM_INTERVIEWER_NODES:
+                return first_role
+            return "orchestrator_to_technical"
         if interview_type == "management":
             return "management"
         elif interview_type in ("behavioral", "hr"):
             return "hr"
+        elif interview_type == "programmer":
+            return "programmer"
         return "orchestrator_to_technical"
     elif stage == "candidate_qa":
         return "orchestrator_conclusion"
-    elif stage in ("technical", "hr", "challenger", "management"):
+    elif stage in ("technical", "programmer", "hr", "challenger", "management", "custom_persona"):
         if latest_input:
             return "shadow_observer"
         return stage
@@ -116,9 +132,11 @@ def build_interview_graph():
     graph.add_node("orchestrator_conclusion", orchestrator_conclusion)
 
     graph.add_node("technical", technical_node)
+    graph.add_node("programmer", programmer_node)
     graph.add_node("hr", hr_node)
     graph.add_node("challenger", challenger_node)
     graph.add_node("management", management_node)
+    graph.add_node("custom_persona", persona_node)
     graph.add_node("shadow_observer", shadow_observer_node)
 
     # Transitions
@@ -130,18 +148,22 @@ def build_interview_graph():
     graph.add_edge("orchestrator_to_qa", END)
     graph.add_edge("orchestrator_conclusion", END)
     graph.add_edge("technical", END)
+    graph.add_edge("programmer", END)
     graph.add_edge("hr", END)
     graph.add_edge("challenger", END)
     graph.add_edge("management", END)
+    graph.add_edge("custom_persona", END)
 
     # Observer routes dynamically
     graph.add_conditional_edges("shadow_observer", after_observer_route, {
         "technical": "technical",
+        "programmer": "programmer",
         "orchestrator_to_hr": "orchestrator_to_hr",
         "hr": "hr",
         "orchestrator_to_qa": "orchestrator_to_qa",
         "challenger": "challenger",
-        "management": "management"
+        "management": "management",
+        "custom_persona": "custom_persona"
     })
 
     # Entry point
@@ -151,9 +173,11 @@ def build_interview_graph():
         "orchestrator_conclusion": "orchestrator_conclusion",
         "shadow_observer": "shadow_observer",
         "technical": "technical",
+        "programmer": "programmer",
         "hr": "hr",
         "challenger": "challenger",
-        "management": "management"
+        "management": "management",
+        "custom_persona": "custom_persona"
     })
 
     return graph.compile()

@@ -17,14 +17,13 @@ import {
   RefreshCw,
   Tv,
   MessageSquare,
-  Zap,
-  Code2,
-  Briefcase,
-  Users2,
-  UserCheck
+  Sparkles,
+  Globe
 } from 'lucide-react';
 import type { Message } from '../types';
 import { InterviewerPanel } from './InterviewerPanel';
+import { getInterviewerMeta } from '../utils/interviewers';
+import type { PersonaDisplayInfo } from '../utils/interviewers';
 
 interface InterviewRoomProps {
   sessionId: string;
@@ -35,6 +34,8 @@ interface InterviewRoomProps {
   lifelinesUsed: number;
   isThinking: boolean;
   shadowLogsCount: number;
+  webSearchEnabled: boolean;
+  customPersonas?: PersonaDisplayInfo[];
   onSendMessage: (text: string) => void;
   onRequestLifeline: () => void;
   onFinishInterview: () => void;
@@ -42,15 +43,21 @@ interface InterviewRoomProps {
   onResumeInterview: () => void;
   onRedoTurn: () => void;
   onRestartInterview: () => void;
+  onToggleWebSearch: () => void;
+  onSimulateAnswer: () => Promise<string | void>;
 }
 
 export const InterviewRoom: React.FC<InterviewRoomProps> = ({
+  sessionId: _sessionId,
+  stage: _stage,
   currentInterviewer,
   messages,
   status,
   lifelinesUsed,
   isThinking,
   shadowLogsCount,
+  webSearchEnabled,
+  customPersonas,
   onSendMessage,
   onRequestLifeline,
   onFinishInterview,
@@ -58,6 +65,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   onResumeInterview,
   onRedoTurn,
   onRestartInterview,
+  onToggleWebSearch,
+  onSimulateAnswer,
 }) => {
   const [inputText, setInputText] = useState('');
   const [viewMode, setViewMode] = useState<'meeting' | 'chat'>('meeting');
@@ -65,6 +74,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const [isMicOn, setIsMicOn] = useState(false);
   const [isTTSActive, setIsTTSActive] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
+  const [simulateAnswerNotification, setSimulateAnswerNotification] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -142,6 +153,10 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
       case 'technical':
         utterance.pitch = 0.95;
         utterance.rate = 1.1;
+        break;
+      case 'programmer':
+        utterance.pitch = 1.05;
+        utterance.rate = 1.05;
         break;
       case 'hr':
         utterance.pitch = 1.15;
@@ -238,67 +253,27 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     }
   };
 
-  // Get active interviewer visual meta
-  const getInterviewerMeta = (name?: string) => {
-    switch (name) {
-      case 'orchestrator':
-        return {
-          title: '主考官 · 王主持',
-          sub: '主持与全流程协调',
-          badgeBg: 'bg-blue-900/60 text-blue-300 border-blue-700/50',
-          bubbleBg: 'bg-blue-950/20 border-blue-900/40 text-blue-100',
-          gradient: 'from-blue-600 to-indigo-700',
-          avatarIcon: UserCheck,
-        };
-      case 'technical':
-        return {
-          title: '技术面试官 · 李架构',
-          sub: '高可用与底层原理深度考查',
-          badgeBg: 'bg-cyan-900/60 text-cyan-300 border-cyan-700/50',
-          bubbleBg: 'bg-cyan-950/20 border-cyan-900/40 text-cyan-100',
-          gradient: 'from-cyan-600 to-teal-700',
-          avatarIcon: Code2,
-        };
-      case 'hr':
-        return {
-          title: 'HR面试官 · 陈总监',
-          sub: 'STAR行为、软技能与文化契合度',
-          badgeBg: 'bg-purple-900/60 text-purple-300 border-purple-700/50',
-          bubbleBg: 'bg-purple-950/20 border-purple-900/40 text-purple-100',
-          gradient: 'from-purple-600 to-pink-700',
-          avatarIcon: Users2,
-        };
-      case 'management':
-        return {
-          title: '管理岗考官 · 赵战略',
-          sub: '团队梯队、技术债务治理与研发效能',
-          badgeBg: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50',
-          bubbleBg: 'bg-emerald-950/20 border-emerald-900/40 text-emerald-100',
-          gradient: 'from-emerald-600 to-green-700',
-          avatarIcon: Briefcase,
-        };
-      case 'challenger':
-        return {
-          title: '压力挑战官 · 张挑刺',
-          sub: '极端容灾故障与逻辑反例施压',
-          badgeBg: 'bg-amber-900/60 text-amber-300 border-amber-700/50',
-          bubbleBg: 'bg-amber-950/20 border-amber-900/40 text-amber-100',
-          gradient: 'from-amber-600 to-red-700',
-          avatarIcon: Zap,
-        };
-      default:
-        return {
-          title: '主考官 · 王主持',
-          sub: '面试评审席',
-          badgeBg: 'bg-gray-800 text-gray-300 border-gray-700',
-          bubbleBg: 'bg-gray-900 border-gray-800 text-gray-200',
-          gradient: 'from-blue-600 to-indigo-700',
-          avatarIcon: Bot,
-        };
+  const handleSimulateAnswer = async () => {
+    if (isThinking || isGeneratingAnswer || status === 'paused') return;
+    setIsGeneratingAnswer(true);
+    setSimulateAnswerNotification(null);
+    try {
+      const generated = await onSimulateAnswer();
+      if (generated && typeof generated === 'string') {
+        setInputText(generated);
+        setSimulateAnswerNotification('✨ AI 已根据上下文与简历为您生成第一人称金牌回答，您可直接微调或点击【提交回答】！');
+      }
+    } catch (err) {
+      console.error('Failed to simulate answer:', err);
+    } finally {
+      setIsGeneratingAnswer(false);
     }
   };
 
-  const activeInterviewerMeta = getInterviewerMeta(currentInterviewer);
+  // Get interviewer visual meta（内置角色 + 自定义人设统一查表）
+  const resolveInterviewerMeta = (name?: string) => getInterviewerMeta(name, customPersonas);
+
+  const activeInterviewerMeta = resolveInterviewerMeta(currentInterviewer);
   const latestAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
 
   return (
@@ -370,6 +345,28 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
           >
             {isTTSActive ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
             <span className="hidden sm:inline">{isTTSActive ? '语音开启' : '静音'}</span>
+          </button>
+
+          {/* Web Search Toggle Button */}
+          <button
+            type="button"
+            onClick={onToggleWebSearch}
+            title={webSearchEnabled ? '联网搜索已开启：实时检索最新技术考点与方案' : '联网搜索已关闭：点击开启'}
+            className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${
+              webSearchEnabled
+                ? 'bg-blue-950/80 border-blue-500/60 text-blue-300 shadow-sm shadow-blue-900/30'
+                : 'bg-gray-800/80 border-gray-700 text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">
+              联网搜索: {webSearchEnabled ? '开启' : '关闭'}
+            </span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                webSearchEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'
+              }`}
+            />
           </button>
         </div>
 
@@ -569,7 +566,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
               {messages.map((msg, index) => {
                 const isCandidate = msg.role === 'user';
-                const meta = getInterviewerMeta(msg.name);
+                const meta = resolveInterviewerMeta(msg.name);
                 return (
                   <div
                     key={index}
@@ -600,12 +597,13 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             currentInterviewer={currentInterviewer}
             isThinking={isThinking}
             shadowLogsCount={shadowLogsCount}
+            customPersonas={customPersonas}
           />
 
           <div className="flex-1 bg-gray-950/70 border border-gray-800/80 rounded-2xl p-4 overflow-y-auto space-y-4">
             {messages.map((msg, index) => {
               const isCandidate = msg.role === 'user';
-              const meta = getInterviewerMeta(msg.name);
+              const meta = resolveInterviewerMeta(msg.name);
 
               return (
                 <div
@@ -717,6 +715,22 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
               {isMicOn ? <Mic className="w-3.5 h-3.5 text-red-400" /> : <MicOff className="w-3.5 h-3.5 text-gray-400" />}
               <span>{isMicOn ? '正在实时录音输入...' : '语音作答 (STT)'}</span>
             </button>
+
+            {/* Simulate Standard Answer Button */}
+            <button
+              type="button"
+              onClick={handleSimulateAnswer}
+              disabled={isThinking || isGeneratingAnswer || status === 'paused'}
+              title="如果不知道如何回答，点击此按钮让大模型根据上下文与岗位要求构思标准示范回答并填入输入框"
+              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border transition shadow-sm ${
+                isGeneratingAnswer
+                  ? 'bg-indigo-900/80 border-indigo-500 text-indigo-200 animate-pulse'
+                  : 'bg-indigo-950/40 hover:bg-indigo-900/60 border-indigo-700/50 text-indigo-300 hover:text-indigo-100'
+              } disabled:opacity-50`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{isGeneratingAnswer ? '正在构思金牌回答...' : '模拟标准回答'}</span>
+            </button>
           </div>
 
           <div className="text-[11px] text-gray-500 hidden md:inline">
@@ -724,6 +738,24 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             <kbd className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Shift+Enter</kbd> 换行
           </div>
         </div>
+
+        {/* Simulate Answer Notification Banner */}
+        {simulateAnswerNotification && (
+          <div className="mb-2 px-3 py-2 rounded-xl bg-indigo-950/70 border border-indigo-700/50 text-indigo-200 text-xs flex items-center justify-between shadow-md animate-fadeIn">
+            <div className="flex items-center space-x-2">
+              <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+              <span className="leading-snug">{simulateAnswerNotification}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSimulateAnswerNotification(null)}
+              className="text-indigo-400 hover:text-indigo-100 px-1.5 py-0.5 rounded text-xs ml-2"
+              title="关闭提示"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Text Input Area */}
         <div className="relative">

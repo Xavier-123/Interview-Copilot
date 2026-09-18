@@ -7,11 +7,43 @@ from app.agents.llm import llm_service
 
 logger = logging.getLogger(__name__)
 
+VALID_ANSWER_STATUS = ("unknown", "poor", "surface", "solid", "excellent")
+
+# 明确“答不上来”的短回答特征：整段回答很短且包含放弃类表述时，直接判定为 unknown
+_REFUSAL_PATTERNS = (
+    "不知道", "不会", "不了解", "没接触过", "没研究过", "不清楚", "没用过", "没听说过",
+    "i don't know", "no idea", "not sure", "pass", "skip",
+)
+_REFUSAL_MAX_LEN = 30
+
+
+def _detect_refusal(candidate_answer: str) -> bool:
+    normalized = (candidate_answer or "").strip().lower()
+    if not normalized or len(normalized) <= 1:
+        return True
+    if len(normalized) <= _REFUSAL_MAX_LEN and any(p in normalized for p in _REFUSAL_PATTERNS):
+        return True
+    return False
+
+
+def _derive_status_from_score(score: float) -> str:
+    if score >= 0.85:
+        return "excellent"
+    if score > 0.8:
+        return "solid"
+    if score >= 0.5:
+        return "surface"
+    return "poor"
+
+
 async def shadow_observer_node(state: InterviewState) -> dict:
     """
     Shadow Evaluator Node:
-    Silently evaluates candidate's latest answer, determines satisfaction score (0.0-1.0),
-    extracts follow-up hints, and updates rolling condensed memory.
+    Silently evaluates candidate's latest answer, determines satisfaction score (0.0-1.0)
+    and answer status, then decides the next dig_action:
+    - unknown / poor answer  -> SWITCH_TOPIC (failed): 直接切换下一个知识点，清空追问线索
+    - surface answer         -> PROBE_WEAKNESS: 给一次引导式追问机会（仅一次）
+    - solid / excellent      -> DEEP_DIVE: 就当前主题继续深挖（最多 5 层）
     """
     messages = state.get("messages", [])
     candidate_answer = state.get("latest_user_input", "")
@@ -30,7 +62,7 @@ async def shadow_observer_node(state: InterviewState) -> dict:
     # Find the last question asked by an interviewer
     last_question = "请介绍你的技术或业务实践"
     for msg in reversed(messages):
-        if msg.get("role") == "assistant" and msg.get("name") in ("technical", "hr", "challenger", "orchestrator", "management"):
+        if msg.get("role") == "assistant" and msg.get("name") in ("technical", "programmer", "hr", "challenger", "orchestrator", "management"):
             last_question = msg.get("content", "")
             break
 
@@ -43,7 +75,7 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         jd_requirements=str(jd_requirements)
     )
 
-    prompt = "请作为影子观察员，客观记录候选人本轮回答的满足度评分(0.0~1.0)、亮点、缺陷、追问线索及核心主张，严格输出合法 JSON 结构。"
+    prompt = "请作为影子观察员，客观记录候选人本轮回答的满足度评分(0.0~1.0)、回答状态、亮点、缺陷、追问线索及核心主张，严格输出合法 JSON 结构。"
 
     try:
         resp = await llm_service.invoke(
@@ -83,6 +115,13 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         score = float(parsed_data.get("depth_score", 7.0)) / 10.0
     satisfaction_score = max(0.0, min(1.0, round(score, 2)))
 
+    # Answer status: LLM 判定优先，缺失时按分数推导；明确放弃类短回答强制判为 unknown
+    answer_status = parsed_data.get("answer_status")
+    if answer_status not in VALID_ANSWER_STATUS:
+        answer_status = _derive_status_from_score(satisfaction_score)
+    if _detect_refusal(candidate_answer):
+        answer_status = "unknown"
+
     # Topic extraction
     extracted_topic = parsed_data.get("topic")
     if prior_action == "SWITCH_TOPIC" or not current_topic:
@@ -90,8 +129,20 @@ async def shadow_observer_node(state: InterviewState) -> dict:
     else:
         active_topic = current_topic or extracted_topic or "核心技术架构"
 
-    # Deep Dive & 5-Layer Limitation Logic
-    if satisfaction_score > 0.8:
+    next_topic_hint = parsed_data.get("next_topic_hint")
+    follow_up_hint = parsed_data.get("follow_up_hint")
+    key_claim = parsed_data.get("key_claim")
+
+    # ── 深挖 / 换题决策策略 ──────────────────────────────────────────────
+    switch_reason = None
+    if answer_status == "unknown" or satisfaction_score < 0.5:
+        # 答不上来 / 答得很差：直接切换下一个知识点，并清空追问线索防止面试官继续纠缠
+        new_depth = 1
+        dig_action = "SWITCH_TOPIC"
+        switch_reason = "failed"
+        follow_up_hint = None
+        target_topic = next_topic_hint or extracted_topic or active_topic
+    elif satisfaction_score > 0.8:
         if prior_depth < 5:
             new_depth = prior_depth + 1
             dig_action = "DEEP_DIVE"
@@ -99,14 +150,23 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         else:
             new_depth = 1
             dig_action = "SWITCH_TOPIC"
-            target_topic = extracted_topic or active_topic
+            switch_reason = "exhausted"
+            target_topic = next_topic_hint or extracted_topic or active_topic
     else:
-        new_depth = 1
-        dig_action = "SWITCH_TOPIC"
-        target_topic = extracted_topic or active_topic
-
-    follow_up_hint = parsed_data.get("follow_up_hint")
-    key_claim = parsed_data.get("key_claim")
+        # 0.5 ~ 0.8 浮于表面：给一次引导式追问机会；若上一轮已追问过仍无起色则换题
+        if prior_action == "PROBE_WEAKNESS":
+            new_depth = 1
+            dig_action = "SWITCH_TOPIC"
+            switch_reason = "surface_repeated"
+            follow_up_hint = None
+            target_topic = next_topic_hint or extracted_topic or active_topic
+        else:
+            new_depth = min(prior_depth + 1, 5)
+            dig_action = "PROBE_WEAKNESS"
+            if not follow_up_hint:
+                weaknesses = parsed_data.get("weaknesses") or []
+                follow_up_hint = weaknesses[0] if weaknesses else "针对回答中最含糊的关键细节进行引导式追问"
+            target_topic = active_topic
 
     # Update condensed rolling memory
     new_memory_item = f"轮次{round_count} [{active_topic}]: {key_claim or candidate_answer[:50]}"
@@ -119,6 +179,7 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         "candidate_answer": candidate_answer,
         "topic": target_topic,
         "satisfaction_score": satisfaction_score,
+        "answer_status": answer_status,
         "depth_level": new_depth,
         "strengths": parsed_data.get("strengths", []),
         "weaknesses": parsed_data.get("weaknesses", []),
@@ -134,7 +195,10 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         "current_topic": target_topic,
         "topic_depth": new_depth,
         "last_satisfaction_score": satisfaction_score,
+        "last_answer_status": answer_status,
         "dig_action": dig_action,
+        "switch_reason": switch_reason,
         "follow_up_hint": follow_up_hint,
+        "next_topic_hint": next_topic_hint,
         "condensed_memory": updated_memory
     }

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, User, Lock, Mail, Sparkles, LogIn, UserPlus, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,6 +18,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
   const [targetRole, setTargetRole] = useState('资深后端架构师');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // 每次打开弹窗时重置表单，避免上次的注册模式/输入/报错残留
+  useEffect(() => {
+    if (open) {
+      setIsRegister(false);
+      setUsername('');
+      setPassword('');
+      setEmail('');
+      setRealName('');
+      setTargetRole('资深后端架构师');
+      setError(null);
+      setLoading(false);
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -58,7 +73,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
     }
   };
 
-  return (
+  // 用 Portal 渲染到 body：header 的 backdrop-blur 会成为 fixed 子元素的包含块，导致弹窗贴顶不居中
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
       <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-md p-6 relative shadow-2xl overflow-hidden">
         {/* Decorative blur */}
@@ -233,6 +249,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

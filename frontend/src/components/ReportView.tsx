@@ -21,6 +21,7 @@ import {
   Calendar,
   Target,
   Check,
+  Download,
   Zap
 } from 'lucide-react';
 import type { EvaluationReport, DrillCardItem } from '../types';
@@ -28,9 +29,10 @@ import type { EvaluationReport, DrillCardItem } from '../types';
 interface ReportViewProps {
   report: EvaluationReport;
   onRestart: () => void;
+  sessionId?: string;
 }
 
-export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart }) => {
+export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessionId }) => {
   const [copied, setCopied] = useState(false);
   const [activeDrillModal, setActiveDrillModal] = useState<DrillCardItem | null>(null);
   const [drillAnswer, setDrillAnswer] = useState('');
@@ -129,6 +131,16 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart }) => 
               >
                 {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
               </button>
+              {sessionId && (
+                <a
+                  href={`/api/v1/interviews/${sessionId}/export?format=markdown`}
+                  download
+                  className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs flex items-center space-x-1 transition"
+                  title="下载完整面试对话与报告（Markdown）"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+              )}
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, Body
+from urllib.parse import quote
+from fastapi import APIRouter, HTTPException, Depends, Body, Response
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from app.services.session_manager import session_manager
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/interviews", tags=["interviews"])
 class CreateSessionRequest(BaseModel):
     resume_text: Optional[str] = ""
     jd_text: Optional[str] = ""
-    interview_type: Optional[str] = "structured"  # technical | behavioral | hr | management | english | structured | custom
+    interview_type: Optional[str] = "structured"  # technical | programmer | behavioral | hr | management | english | structured | custom
     industry: Optional[str] = "互联网/电商"
     job_role: Optional[str] = "后端开发"
     seniority: Optional[str] = "senior"           # junior | senior | expert | director
@@ -20,12 +21,17 @@ class CreateSessionRequest(BaseModel):
     custom_config: Optional[Dict[str, Any]] = None
     user_id: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
+    web_search_enabled: Optional[bool] = False
+    max_rounds: Optional[int] = None              # 轮次上限（None -> 后端默认 6；programmer 前端传 8）
 
 class AnswerRequest(BaseModel):
     message: str
 
 class PauseRequest(BaseModel):
     elapsed_seconds: Optional[int] = 0
+
+class ToggleWebSearchRequest(BaseModel):
+    enabled: Optional[bool] = None
 
 class CompareRequest(BaseModel):
     session_id_1: str
@@ -51,7 +57,9 @@ async def create_interview_session(
             style=req.style or "rigorous",
             language=req.language or "zh",
             custom_config=req.custom_config,
-            llm_config=req.llm_config
+            llm_config=req.llm_config,
+            web_search_enabled=bool(req.web_search_enabled),
+            max_rounds=int(req.max_rounds) if req.max_rounds else 6
         )
         return {
             "session_id": state["session_id"],
@@ -59,6 +67,7 @@ async def create_interview_session(
             "candidate_profile": state["candidate_profile"],
             "jd_requirements": state["jd_requirements"],
             "interview_mode": state["interview_mode"],
+            "web_search_enabled": state.get("web_search_enabled", False),
             "status": state["status"]
         }
     except Exception as e:
@@ -158,6 +167,26 @@ async def request_lifeline(session_id: str):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+@router.post("/{session_id}/simulate-answer")
+async def simulate_standard_answer(session_id: str):
+    """Generate AI golden standard answer for candidate based on context, question, and optional web search."""
+    try:
+        result = await session_manager.simulate_standard_answer(session_id)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{session_id}/toggle-web-search")
+async def toggle_web_search(session_id: str, req: Optional[ToggleWebSearchRequest] = None):
+    """Toggle or set web search status for the current session."""
+    try:
+        enabled = req.enabled if req else None
+        result = await session_manager.toggle_web_search(session_id, enabled=enabled)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -223,3 +252,32 @@ async def get_report(session_id: str):
     if not report:
         raise HTTPException(status_code=404, detail="Report not generated or session not found")
     return report
+
+@router.get("/{session_id}/transcript")
+async def get_interview_transcript(session_id: str):
+    """获取完整面试对话记录（在线回看）。"""
+    transcript = await session_manager.get_transcript(session_id)
+    if not transcript or not transcript.get("messages"):
+        raise HTTPException(status_code=404, detail="对话记录不存在")
+    return transcript
+
+@router.get("/{session_id}/export")
+async def export_interview_transcript(session_id: str, format: str = "markdown"):
+    """将面试对话记录导出为文件下载（markdown / json）。"""
+    transcript = await session_manager.get_transcript(session_id)
+    if not transcript or not transcript.get("messages"):
+        raise HTTPException(status_code=404, detail="对话记录不存在")
+
+    fmt = (format or "markdown").lower()
+    if fmt == "json":
+        content = session_manager.render_transcript_json(transcript)
+        media_type = "application/json; charset=utf-8"
+        filename = session_manager.export_filename(transcript, "json")
+    else:
+        content = session_manager.render_transcript_markdown(transcript)
+        media_type = "text/markdown; charset=utf-8"
+        filename = session_manager.export_filename(transcript, "markdown")
+
+    quoted = quote(filename)
+    headers = {"Content-Disposition": f"attachment; filename=\"{quoted}\"; filename*=UTF-8''{quoted}"}
+    return Response(content=content, media_type=media_type, headers=headers)

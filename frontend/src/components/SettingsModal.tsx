@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Cpu, Info, Eraser } from 'lucide-react';
 import type { LLMConfig } from '../types';
 import { loadLLMConfig, saveLLMConfig } from '../utils/llmConfig';
@@ -49,7 +50,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
   const inputCls =
     'w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono';
 
-  return (
+  // 用 Portal 渲染到 body：header 的 backdrop-blur 会成为 fixed 子元素的包含块，导致弹窗贴顶不居中
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
@@ -160,6 +162,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

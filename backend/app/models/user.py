@@ -18,6 +18,7 @@ class User(Base):
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     resumes = relationship("UserResume", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("InterviewSessionModel", back_populates="user", cascade="all, delete-orphan")
+    personas = relationship("InterviewerPersona", back_populates="user", cascade="all, delete-orphan")
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"

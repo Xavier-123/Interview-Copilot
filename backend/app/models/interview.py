@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Text, JSON, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, Text, JSON, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.models.db import Base
 
@@ -10,7 +10,7 @@ class InterviewSessionModel(Base):
     id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(128), default="模拟面试会话")
-    interview_type = Column(String(64), default="structured")  # technical | behavioral | hr | management | english | structured | custom
+    interview_type = Column(String(64), default="structured")  # technical | programmer | behavioral | hr | management | english | structured | custom
     industry = Column(String(64), default="互联网/电商")
     job_role = Column(String(64), default="后端开发")
     seniority = Column(String(32), default="senior")
@@ -21,6 +21,7 @@ class InterviewSessionModel(Base):
     round_count = Column(Integer, default=0)
     max_rounds = Column(Integer, default=6)
     elapsed_seconds = Column(Integer, default=0)
+    web_search_enabled = Column(Boolean, default=False)
     candidate_profile = Column(JSON, default=dict)
     jd_requirements = Column(JSON, default=dict)
     interview_state = Column(JSON, default=dict)  # Full LangGraph state snapshot
@@ -28,7 +29,7 @@ class InterviewSessionModel(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="sessions")
-    messages = relationship("InterviewMessageModel", back_populates="session", cascade="all, delete-orphan", order_by="InterviewMessageModel.created_at")
+    messages = relationship("InterviewMessageModel", back_populates="session", cascade="all, delete-orphan", order_by="InterviewMessageModel.seq")
     report = relationship("InterviewReportModel", back_populates="session", uselist=False, cascade="all, delete-orphan")
 
 class InterviewMessageModel(Base):
@@ -36,8 +37,9 @@ class InterviewMessageModel(Base):
 
     id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id = Column(String(64), ForeignKey("interview_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    seq = Column(Integer, nullable=True, index=True)  # 消息在会话中的顺序号，用于增量同步与回滚
     role = Column(String(32), nullable=False)  # user | assistant | system
-    name = Column(String(32), nullable=True)   # candidate | orchestrator | technical | hr | challenger | management
+    name = Column(String(32), nullable=True)   # candidate | orchestrator | technical | programmer | hr | challenger | management
     content = Column(Text, nullable=False)
     stage = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

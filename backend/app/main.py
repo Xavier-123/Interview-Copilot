@@ -6,6 +6,7 @@ from app.models.db import init_db
 from app.api.v1.auth import router as auth_router
 from app.api.v1.interviews import router as interviews_router
 from app.api.v1.profiles import router as profiles_router
+from app.api.v1.personas import router as personas_router
 from app.api.ws.interview_stream import router as ws_router
 
 @asynccontextmanager
@@ -35,6 +36,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(interviews_router, prefix=settings.API_V1_STR)
 app.include_router(profiles_router, prefix=settings.API_V1_STR)
+app.include_router(personas_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix="/api")
 
 @app.get("/health", tags=["system"])

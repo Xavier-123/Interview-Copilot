@@ -3,42 +3,47 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import InterviewState
 from app.agents.prompts import HR_INTERVIEWER_PROMPT
 from app.agents.llm import llm_service
+from app.agents import interviewer_utils
 
 async def hr_node(state: InterviewState) -> dict:
     """
     HR / Culture & Behavioral Specialist Node:
     Conducts STAR behavioral questions, situational teamwork, and culture-fit questions.
+    Consumes the unified dig_action decision from the shadow observer.
     """
     candidate_profile = state.get("candidate_profile", {})
     jd_requirements = state.get("jd_requirements", {})
-    latest_input = state.get("latest_user_input", "")
     round_count = state.get("round_count", 0)
-    condensed_memory = state.get("condensed_memory", "")
-    follow_up_hint = state.get("follow_up_hint", "")
 
     sys_msg = HR_INTERVIEWER_PROMPT.format(
         candidate_profile=str(candidate_profile),
         jd_requirements=str(jd_requirements),
-        condensed_memory=condensed_memory or "无",
-        latest_user_input=latest_input or "准备开始行为与团队协作面试"
+        condensed_memory=state.get("condensed_memory", "") or "无",
+        latest_user_input=state.get("latest_user_input", "") or "准备开始行为与团队协作面试"
     )
 
-    if round_count == 0:
+    dig_action = state.get("dig_action", "INIT")
+    role_line = "请转向另一个行为考察维度（团队协作、跨部门冲突化解、抗压与自驱、职业规划、自我认知等）。"
+
+    if round_count == 0 or dig_action == "INIT":
         prompt = (
             "这是行为与文化考察的第一道题。请依据候选人过往简历经历，"
             "运用 STAR 法则提出一个考察团队协作、跨部门冲突化解或重大交付压力下的行为面试问题。"
         )
-    elif follow_up_hint:
-        prompt = (
-            f"候选人刚才回答：'{latest_input}'。\n"
-            f"影子观察员建议追问点：【{follow_up_hint}】。\n"
-            f"提问要求：针对候选人回答中缺乏的真实细节（如个人具体承担角色、行动依据或实际量化结果），进行针对性 STAR 追问。"
+    elif dig_action == "DEEP_DIVE":
+        prompt = interviewer_utils.build_deep_dive_instruction(
+            state,
+            "请就当前行为话题追问更具体的个人动作、判断依据与量化结果。"
         )
-    else:
-        prompt = (
-            f"候选人刚才回答：'{latest_input}'。\n"
-            f"请简要亲和点评，并针对职业规划、危机应对或自我反思提出下一个行为考察问题。"
+    elif dig_action == "PROBE_WEAKNESS":
+        prompt = interviewer_utils.build_probe_instruction(
+            state,
+            "请引导候选人补充真实细节（个人具体承担角色、行动依据或实际量化结果），注意先共情再追问。"
         )
+    else:  # SWITCH_TOPIC
+        prompt = interviewer_utils.build_switch_instruction(state, role_line)
+
+    prompt += interviewer_utils.QUESTION_LIMIT
 
     resp = await llm_service.invoke(
         [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],

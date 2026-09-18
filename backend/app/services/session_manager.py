@@ -1,17 +1,47 @@
 import uuid
+import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, delete, func
 from sqlalchemy.orm import selectinload
+from langchain_core.messages import SystemMessage, HumanMessage
 from app.models.db import AsyncSessionLocal
 from app.models.interview import InterviewSessionModel, InterviewMessageModel, InterviewReportModel
+from app.models.persona import InterviewerPersona
 from app.agents.state import InterviewState
 from app.agents.graph import interview_app
 from app.agents.evaluator import generate_evaluation_report
+from app.agents.persona_node import PERSONA_KEY_PREFIX, PERSONA_REF_PREFIX
+from app.agents.prompts import SIMULATE_ANSWER_PROMPT
+from app.agents.llm import llm_service
 from app.services.parser import parser_service
+from app.services.search import search_service
 
 logger = logging.getLogger(__name__)
+
+# 面试类型的中文标签（用于会话标题、对话记录导出等展示场景）
+INTERVIEW_TYPE_LABELS = {
+    "technical": "技术深度面",
+    "programmer": "程序员综合面",
+    "behavioral": "STAR行为面",
+    "hr": "HR综合面",
+    "management": "管理岗面",
+    "english": "英语全真面",
+    "structured": "结构化全流程",
+    "custom": "自选定制面",
+}
+
+# 面试官角色的中文称谓（用于对话记录渲染）
+INTERVIEWER_LABELS = {
+    "orchestrator": "主考官",
+    "technical": "技术面试官",
+    "programmer": "程序员面试官",
+    "hr": "HR面试官",
+    "challenger": "压力挑战官",
+    "management": "管理面试官",
+    "candidate": "候选人",
+}
 
 class SessionManager:
     def __init__(self):
@@ -33,10 +63,15 @@ class SessionManager:
         language: str = "zh",
         custom_config: Optional[Dict[str, Any]] = None,
         llm_config: Optional[Dict[str, Any]] = None,
+        web_search_enabled: bool = False,
         tech_rounds_target: int = 2,
         max_rounds: int = 6
     ) -> InterviewState:
         session_id = str(uuid.uuid4())
+        type_label = INTERVIEW_TYPE_LABELS.get(interview_type, interview_type)
+
+        # 0. 解析自定义面试官阵容：将 persona:<id> 引用替换为稳定 key，并把人设快照进会话
+        custom_config = await self._resolve_custom_config(custom_config, user_id)
 
         # 1. Parse Resume and JD
         candidate_profile = await parser_service.parse_resume(resume_text, llm_config=llm_config)
@@ -46,7 +81,7 @@ class SessionManager:
         initial_state: InterviewState = {
             "session_id": session_id,
             "user_id": user_id,
-            "title": f"{job_role} - {interview_type.capitalize()} 模拟面试",
+            "title": f"{job_role} - {type_label}模拟面试",
             "stage": "icebreak",
             "current_interviewer": "orchestrator",
             "next_interviewer": "candidate",
@@ -58,6 +93,7 @@ class SessionManager:
             "style": style,
             "language": language,
             "custom_config": custom_config,
+            "web_search_enabled": web_search_enabled,
             "round_count": 0,
             "max_rounds": max_rounds,
             "tech_rounds_target": tech_rounds_target,
@@ -112,6 +148,7 @@ class SessionManager:
                     round_count=0,
                     max_rounds=max_rounds,
                     elapsed_seconds=0,
+                    web_search_enabled=web_search_enabled,
                     candidate_profile=candidate_profile,
                     jd_requirements=jd_requirements,
                     interview_state=dict(initial_state)
@@ -122,6 +159,77 @@ class SessionManager:
             logger.error(f"Failed to persist new session to DB: {e}")
 
         return initial_state
+
+    async def _resolve_custom_config(
+        self, custom_config: Optional[Dict[str, Any]], user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        解析自定义面试配置中的自定义面试官引用：
+        - selected_interviewers 中的 "persona:<人设ID>" 替换为该人设的稳定 key（persona_xxxx）
+        - 将引用到的完整人设快照进 custom_config.personas，并生成 persona_labels 便于展示
+        之后编辑/删除人设不影响本场会话。
+        """
+        if not custom_config:
+            return custom_config
+        selected = custom_config.get("selected_interviewers")
+        if not selected:
+            return custom_config
+
+        persona_id_set = {
+            entry.split(":", 1)[1]
+            for entry in selected
+            if isinstance(entry, str) and entry.startswith(PERSONA_REF_PREFIX)
+        }
+        if not persona_id_set:
+            return custom_config
+
+        snapshots: Dict[str, Dict[str, Any]] = {}
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(InterviewerPersona).where(
+                        InterviewerPersona.id.in_(persona_id_set),
+                        InterviewerPersona.user_id == user_id,
+                        InterviewerPersona.enabled == True,  # noqa: E712
+                    )
+                )
+                for p in result.scalars().all():
+                    snapshots[p.id] = {
+                        "id": p.id,
+                        "key": p.key,
+                        "name": p.name,
+                        "avatar": p.avatar or "🎭",
+                        "description": p.description or "",
+                        "system_prompt": p.system_prompt,
+                        "focus_topics": p.focus_topics or [],
+                        "opening_hint": p.opening_hint or "",
+                        "deep_dive_hint": p.deep_dive_hint or "",
+                        "probe_hint": p.probe_hint or "",
+                        "switch_hint": p.switch_hint or "",
+                    }
+        except Exception as e:
+            logger.error(f"Failed to load persona snapshots for session: {e}")
+
+        resolved_lineup: List[str] = []
+        for entry in selected:
+            if isinstance(entry, str) and entry.startswith(PERSONA_REF_PREFIX):
+                snapshot = snapshots.get(entry.split(":", 1)[1])
+                if snapshot:
+                    resolved_lineup.append(snapshot["key"])
+                # 引用的人设不存在/已停用时直接跳过，避免轮转出无效节点
+            else:
+                resolved_lineup.append(entry)
+
+        if not resolved_lineup:
+            resolved_lineup = ["technical", "hr"]
+
+        persona_snapshots = list({s["key"]: s for s in snapshots.values()}.values())
+        custom_config = dict(custom_config)
+        custom_config["selected_interviewers"] = resolved_lineup
+        if persona_snapshots:
+            custom_config["personas"] = persona_snapshots
+            custom_config["persona_labels"] = {s["key"]: s["name"] for s in persona_snapshots}
+        return custom_config
 
     async def start_session(self, session_id: str) -> Dict[str, Any]:
         state = await self._ensure_state(session_id)
@@ -248,6 +356,18 @@ class SessionManager:
         state["stress_triggered"] = False
 
         self._sessions[session_id] = state
+
+        # 重开一场：清空该会话历史消息行，避免与新一轮对话混淆
+        try:
+            async with AsyncSessionLocal() as db:
+                await db.execute(
+                    delete(InterviewMessageModel)
+                    .where(InterviewMessageModel.session_id == session_id)
+                )
+                await db.commit()
+        except Exception as e:
+            logger.error(f"Failed to clear messages for restart: {e}")
+
         return await self.start_session(session_id)
 
     async def request_lifeline(self, session_id: str) -> Dict[str, Any]:
@@ -343,6 +463,7 @@ class SessionManager:
                         "seniority": s.seniority,
                         "difficulty": s.difficulty,
                         "status": s.status,
+                        "web_search_enabled": bool(s.web_search_enabled),
                         "round_count": s.round_count,
                         "elapsed_seconds": s.elapsed_seconds,
                         "created_at": s.created_at.isoformat() if s.created_at else None,
@@ -398,6 +519,168 @@ class SessionManager:
             "state": state,
             "report": report
         }
+
+    async def get_transcript(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        获取完整面试对话记录（供在线回看与文件导出）。
+        state 快照优先（始终最新）；state 缺失时回退到 interview_messages 表。
+        """
+        state = await self._ensure_state(session_id) or {}
+        report = self._reports.get(session_id)
+        session_meta: Dict[str, Any] = {}
+        db_messages: List[Dict[str, Any]] = []
+
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(InterviewSessionModel)
+                    .options(
+                        selectinload(InterviewSessionModel.messages),
+                        selectinload(InterviewSessionModel.report)
+                    )
+                    .where(InterviewSessionModel.id == session_id)
+                )
+                s = result.scalars().first()
+                if s:
+                    session_meta = {
+                        "session_id": s.id,
+                        "title": s.title,
+                        "interview_type": s.interview_type,
+                        "industry": s.industry,
+                        "job_role": s.job_role,
+                        "seniority": s.seniority,
+                        "difficulty": s.difficulty,
+                        "style": s.style,
+                        "language": s.language,
+                        "status": s.status,
+                        "round_count": s.round_count,
+                        "elapsed_seconds": s.elapsed_seconds,
+                        "created_at": s.created_at.isoformat() if s.created_at else None,
+                    }
+                    db_messages = [
+                        {
+                            "role": m.role,
+                            "name": m.name,
+                            "content": m.content,
+                            "stage": m.stage,
+                            "timestamp": m.created_at.isoformat() if m.created_at else None,
+                        }
+                        for m in s.messages
+                    ]
+                    if s.report and not report:
+                        report = {
+                            "match_verdict": s.report.match_verdict,
+                            "overall_summary": s.report.overall_summary,
+                            "radar_scores": s.report.radar_scores,
+                            "strengths": s.report.strengths,
+                            "weaknesses": s.report.weaknesses,
+                        }
+        except Exception as e:
+            logger.error(f"Failed to load transcript meta from DB: {e}")
+
+        if session_meta:
+            session_meta["status"] = state.get("status", session_meta.get("status"))
+            session_meta["round_count"] = state.get("round_count", session_meta.get("round_count"))
+            if not session_meta.get("interview_type") and state.get("interview_type"):
+                session_meta["interview_type"] = state["interview_type"]
+
+        messages = state.get("messages") or db_messages
+
+        persona_labels = ((state.get("custom_config") or {}).get("persona_labels")) or {}
+
+        return {
+            "session": session_meta,
+            "messages": messages,
+            "observations": state.get("evaluation_logs") or [],
+            "persona_labels": persona_labels,
+            "report": report
+        }
+
+    @staticmethod
+    def _interviewer_label(name: Optional[str], persona_labels: Optional[Dict[str, str]] = None) -> str:
+        key = name or ""
+        if persona_labels and key in persona_labels:
+            return persona_labels[key]
+        return INTERVIEWER_LABELS.get(key, key or "面试官")
+
+    @staticmethod
+    def _type_label(interview_type: Optional[str]) -> str:
+        return INTERVIEW_TYPE_LABELS.get(interview_type or "", interview_type or "-")
+
+    def render_transcript_markdown(self, transcript: Dict[str, Any]) -> str:
+        """将对话记录渲染为 Markdown 文本（含会话信息、对话、逐轮评估与报告附录）。"""
+        s = transcript.get("session", {}) or {}
+        lines: List[str] = [
+            f"# {s.get('title') or '模拟面试记录'}",
+            "",
+            "| 项目 | 内容 |",
+            "| --- | --- |",
+            f"| 面试类型 | {self._type_label(s.get('interview_type'))} |",
+            f"| 行业 / 岗位 | {s.get('industry') or '-'} · {s.get('job_role') or '-'} |",
+            f"| 职级 / 难度 | {s.get('seniority') or '-'} · {s.get('difficulty') or '-'} |",
+            f"| 风格 / 语言 | {s.get('style') or '-'} · {s.get('language') or '-'} |",
+            f"| 状态 / 轮次 | {s.get('status') or '-'} · 共 {s.get('round_count', 0)} 轮 |",
+            f"| 面试用时 | {s.get('elapsed_seconds', 0)} 秒 |",
+            f"| 创建时间 | {s.get('created_at') or '-'} |",
+            "",
+            "## 对话记录",
+        ]
+
+        for m in transcript.get("messages", []) or []:
+            if m.get("role") == "user":
+                speaker = "🧑 候选人"
+            else:
+                speaker = f"🎙️ {self._interviewer_label(m.get('name'), transcript.get('persona_labels'))}"
+            ts = (m.get("timestamp") or "")[:19].replace("T", " ")
+            lines.append("")
+            lines.append(f"**{speaker}** `{ts}`")
+            lines.append("")
+            lines.append((m.get("content") or "").strip())
+
+        observations = transcript.get("observations") or []
+        if observations:
+            lines += ["", "## 逐轮评估（影子观察员）", ""]
+            lines += ["| 轮次 | 面试官 | 考点 | 满足度 | 亮点 | 不足 |", "| --- | --- | --- | --- | --- | --- |"]
+            for o in observations:
+                if not isinstance(o, dict):
+                    continue
+                strengths = "；".join(o.get("strengths") or [])[:80]
+                weaknesses = "；".join(o.get("weaknesses") or [])[:80]
+                lines.append(
+                    f"| {o.get('round_index', '-')} | {self._interviewer_label(o.get('interviewer'), transcript.get('persona_labels'))} "
+                    f"| {o.get('topic') or '-'} | {o.get('satisfaction_score', '-')} "
+                    f"| {strengths or '-'} | {weaknesses or '-'} |"
+                )
+
+        rep = transcript.get("report")
+        if rep:
+            lines += ["", "## 评估报告", ""]
+            lines.append(f"- **综合结论**：{rep.get('match_verdict') or '-'}")
+            radar = rep.get("radar_scores") or {}
+            if radar:
+                lines.append("- **六维雷达**：" + "；".join(f"{k} {v}" for k, v in radar.items()))
+            strengths = rep.get("strengths") or []
+            weaknesses = rep.get("weaknesses") or []
+            if strengths:
+                lines.append("- **核心亮点**：" + "；".join(strengths))
+            if weaknesses:
+                lines.append("- **主要短板**：" + "；".join(weaknesses))
+            if rep.get("overall_summary"):
+                lines += ["", rep["overall_summary"]]
+
+        return "\n".join(lines).strip() + "\n"
+
+    def render_transcript_json(self, transcript: Dict[str, Any]) -> str:
+        """将对话记录渲染为格式化 JSON 文本。"""
+        return json.dumps(transcript, ensure_ascii=False, indent=2, default=str)
+
+    @staticmethod
+    def export_filename(transcript: Dict[str, Any], fmt: str) -> str:
+        s = transcript.get("session", {}) or {}
+        role = (s.get("job_role") or "模拟面试").strip().replace("/", "_")[:30]
+        stamp = datetime.now().strftime("%Y%m%d_%H%M")
+        ext = "json" if fmt == "json" else "md"
+        return f"面试记录_{role}_{stamp}.{ext}"
 
     async def compare_sessions(self, session_id_1: str, session_id_2: str) -> Dict[str, Any]:
         """Compare two interview sessions and generate growth radar and delta."""
@@ -511,22 +794,154 @@ class SessionManager:
                     record.round_count = state.get("round_count", 0)
                     record.interview_state = dict(state)
 
-                    # Save latest message if any
-                    msgs = state.get("messages", [])
-                    if msgs:
-                        last_m = msgs[-1]
-                        msg_record = InterviewMessageModel(
-                            id=str(uuid.uuid4()),
-                            session_id=session_id,
-                            role=last_m.get("role", "assistant"),
-                            name=last_m.get("name"),
-                            content=last_m.get("content", ""),
-                            stage=last_m.get("stage")
-                        )
-                        db.add(msg_record)
+                    # 全量增量同步消息（user + assistant 都落库，支持 redo/restart 回滚）
+                    await self._sync_messages(db, session_id, state.get("messages", []))
 
                     await db.commit()
         except Exception as e:
             logger.error(f"Failed to sync state to DB: {e}")
+
+    async def _sync_messages(self, db, session_id: str, messages: List[Dict[str, Any]]):
+        """
+        将 state.messages 增量同步到 interview_messages 表：
+        - 按 seq 顺序号对齐，只插入新增尾部消息（候选人回答也会入库）
+        - 消息变短（redo 回滚 / restart 清空）时删除多余行
+        """
+        result = await db.execute(
+            select(func.max(InterviewMessageModel.seq))
+            .where(InterviewMessageModel.session_id == session_id)
+        )
+        max_seq = result.scalar()
+        max_seq = max_seq if max_seq is not None else -1
+
+        if len(messages) <= max_seq + 1:
+            await db.execute(
+                delete(InterviewMessageModel)
+                .where(InterviewMessageModel.session_id == session_id)
+                .where(InterviewMessageModel.seq >= len(messages))
+            )
+            max_seq = len(messages) - 1
+
+        for idx in range(max_seq + 1, len(messages)):
+            m = messages[idx] or {}
+            created = None
+            ts = m.get("timestamp")
+            if ts:
+                try:
+                    created = datetime.fromisoformat(ts)
+                except (TypeError, ValueError):
+                    created = None
+            db.add(InterviewMessageModel(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                seq=idx,
+                role=m.get("role", "assistant"),
+                name=m.get("name"),
+                content=m.get("content", ""),
+                stage=m.get("stage"),
+                created_at=created or datetime.utcnow(),
+            ))
+
+    async def simulate_standard_answer(self, session_id: str) -> dict:
+        """
+        Generates a first-person standard golden answer for the candidate
+        based on the latest interviewer question, candidate profile, context, and optional web search.
+        """
+        state = await self._ensure_state(session_id)
+        if not state:
+            raise ValueError(f"Session {session_id} not found")
+
+        # Extract the latest assistant question
+        messages = state.get("messages", [])
+        last_assistant_msg = None
+        for m in reversed(messages):
+            if m.get("role") == "assistant":
+                last_assistant_msg = m
+                break
+
+        if not last_assistant_msg:
+            question = "请做一下自我介绍，并重点阐述你的核心技术亮点与最有挑战的项目经历。"
+            interviewer = "主考官"
+        else:
+            question = last_assistant_msg.get("content", "")
+            name = last_assistant_msg.get("name", "interviewer")
+            interviewer_map = {
+                "orchestrator": "主考官",
+                "technical": "技术面试官",
+                "programmer": "程序员面试官",
+                "hr": "HR与文化面试官",
+                "management": "管理与战略面试官",
+                "challenger": "压力挑战官"
+            }
+            persona_labels = (state.get("custom_config") or {}).get("persona_labels") or {}
+            interviewer = persona_labels.get(name) or interviewer_map.get(name, "面试官")
+
+        industry = state.get("industry", "互联网/电商")
+        job_role = state.get("job_role", "技术研发")
+        seniority = state.get("seniority", "senior")
+        candidate_profile = state.get("candidate_profile", {})
+        condensed_memory = state.get("condensed_memory", "无")
+        web_search_enabled = state.get("web_search_enabled", False)
+
+        web_search_context = ""
+        if web_search_enabled:
+            search_query = f"{job_role} {question[:50]} 标准答案 最佳实践"
+            snippets = await search_service.search(search_query, max_results=2)
+            if snippets:
+                web_search_context = "【联网实时检索参考资料】:\n" + "\n".join([f"- {s['title']}: {s['snippet']}" for s in snippets])
+
+        sys_msg = SIMULATE_ANSWER_PROMPT.format(
+            interviewer=interviewer,
+            question=question,
+            industry=industry,
+            job_role=job_role,
+            seniority=seniority,
+            candidate_profile=str(candidate_profile),
+            condensed_memory=condensed_memory or "无",
+            web_search_context=web_search_context
+        )
+
+        user_prompt = "请根据上述信息，以第一人称（“我”）直接给出高水准的标准示范回答，切中要害、逻辑严密，可直接作答。"
+
+        resp = await llm_service.invoke(
+            [SystemMessage(content=sys_msg), HumanMessage(content=user_prompt)],
+            llm_config=state.get("llm_config")
+        )
+
+        return {
+            "session_id": session_id,
+            "standard_answer": resp.content,
+            "question": question,
+            "interviewer": interviewer,
+            "web_search_used": web_search_enabled
+        }
+
+    async def toggle_web_search(self, session_id: str, enabled: Optional[bool] = None) -> dict:
+        """
+        Dynamically toggles or sets web search mode for the current session.
+        """
+        state = await self._ensure_state(session_id)
+        if not state:
+            raise ValueError(f"Session {session_id} not found")
+
+        current_val = state.get("web_search_enabled", False)
+        new_val = not current_val if enabled is None else bool(enabled)
+        state["web_search_enabled"] = new_val
+        self._sessions[session_id] = state
+
+        try:
+            async with AsyncSessionLocal() as db:
+                record = await db.get(InterviewSessionModel, session_id)
+                if record:
+                    record.web_search_enabled = new_val
+                    record.interview_state = dict(state)
+                    await db.commit()
+        except Exception as e:
+            logger.error(f"Failed to update web_search_enabled in DB: {e}")
+
+        return {
+            "session_id": session_id,
+            "web_search_enabled": new_val
+        }
 
 session_manager = SessionManager()

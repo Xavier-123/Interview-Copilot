@@ -8,6 +8,15 @@ from app.agents.llm import llm_service
 
 logger = logging.getLogger(__name__)
 
+INTERVIEWER_NAME_LABELS = {
+    "orchestrator": "主考官",
+    "technical": "技术面试官",
+    "programmer": "程序员面试官",
+    "hr": "HR面试官",
+    "management": "管理面试官",
+    "challenger": "压力挑战官",
+}
+
 async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
     """
     Synthesizes interview transcript and shadow observation logs into a deep diagnostic report:
@@ -20,12 +29,18 @@ async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
     jd_requirements = state.get("jd_requirements", {})
     messages = state.get("messages", [])
     shadow_logs = state.get("evaluation_logs", [])
+    persona_labels = (state.get("custom_config") or {}).get("persona_labels") or {}
+
+    def _display_name(name: str) -> str:
+        if name in persona_labels:
+            return persona_labels[name]
+        return INTERVIEWER_NAME_LABELS.get(name, name)
 
     # Format conversation history
     conv_lines = []
     for m in messages:
         name = m.get("name") or m.get("role", "user")
-        conv_lines.append(f"[{name}]: {m.get('content', '')}")
+        conv_lines.append(f"[{_display_name(name)}]: {m.get('content', '')}")
     conversation_history = "\n".join(conv_lines)
 
     sys_msg = REPORT_GENERATOR_PROMPT.format(

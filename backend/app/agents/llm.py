@@ -232,10 +232,13 @@ class LLMService:
             }, ensure_ascii=False)
 
         # 4. Check if it's Shadow Observer
-        if "影子观察员" in system_prompt or "Shadow Evaluator" in system_prompt or "影子观察员" in user_prompt:
+        # 注意：必须匹配 system prompt 中的完整角色名——面试官的 system prompt（行为准则禁令）
+        # 和 DEEP_DIVE 指令中也会出现“影子观察员”字样，宽泛匹配会误伤面试官节点。
+        if "影子观察员 Agent" in system_prompt or "Shadow Evaluator" in system_prompt:
             return json.dumps({
                 "topic": "高并发缓存与数据一致性",
                 "satisfaction_score": 0.85,
+                "answer_status": "solid",
                 "strengths": [
                     "表述条理较清晰，准确切中了核心概念",
                     "展现了一定的项目实战经验与架构选型意识"
@@ -245,6 +248,7 @@ class LLMService:
                     "对极端异常场景与边界容灾考虑略显不足"
                 ],
                 "follow_up_hint": "针对方案在极端网络超时下的数据补偿机制进行深挖",
+                "next_topic_hint": "MySQL索引原理与事务隔离级别",
                 "key_claim": "候选人陈述了使用分布式锁防击穿和Canal保证一致性的方案",
                 "depth_score": 8.0,
                 "logic_score": 8.2,
@@ -252,11 +256,43 @@ class LLMService:
                 "flags": ["solid_basis", "needs_more_metrics"]
             }, ensure_ascii=False)
 
+        # 4. Check if it's Simulate Standard Answer (Candidate Golden Answer)
+        if "求职面试导师" in system_prompt or "示范回答" in system_prompt or "候选人第一人称" in system_prompt:
+            if "管理" in user_prompt or "战略" in user_prompt or "梯队" in user_prompt:
+                return (
+                    "在面对紧急重大业务交付与历史技术债务的冲突时，我的核心策略是‘业务优先保交付、架构演进建机制’：\n"
+                    "第一，量化技术债务对业务交付和稳定性的实际损耗。我通常会用故障复盘数据与研发排期阻塞率向业务方和高层说明治理收益，争取在迭代中固定预留15%~20%的研发带宽用于重构治理。\n"
+                    "第二，制定架构演进路线图，采用‘绞杀者模式’分阶段解耦老旧单体模块，通过防腐层隔离系统风险，确保在不中断业务的前提下实现平滑过渡。\n"
+                    "第三，建立明确的梯队分工与规范，通过标杆项目树立研发质量典范，兼顾业务成果与团队长期工程素养提升。"
+                )
+            elif "行为" in user_prompt or "HR" in user_prompt or "团队" in user_prompt or "冲突" in user_prompt:
+                return (
+                    "在过往的重点项目交付中，我曾负责核心业务链路重构。当时面临需求排期仅剩两周、旧系统技术债严重且跨部门协议未定型的紧迫局面。\n"
+                    "我的核心行动包括：第一，采用关键路径法，迅速与产品及上游团队召开对齐会，锁定核心主流程 MVP 范围；第二，针对技术债抽离防腐层（ACL），隔离旧系统风险并制定回滚预案；第三，每日站会同步卡点并推进自动化接口回归。\n"
+                    "最终项目如期保质上线，接口吞吐量提升了 150%，且上线首月未发生任何线上 P2 及以上故障。"
+                )
+            elif "机房" in user_prompt or "网络分区" in user_prompt or "质疑" in user_prompt or "压力" in user_prompt:
+                return (
+                    "在面对跨可用区网络分区导致分布式锁心跳超时的极端场景下，如果必须在一致性与可用性之间做权衡，在核心资金与订单核心链路上，我坚持‘优先保证数据强一致，宁可短时降级或快速失败，绝不产生并发脏写’。\n"
+                    "具体落地方案包括：第一，引入基于版本号的 Fencing Token（递增防护令牌），存储层执行写入操作时校验 Token 是否单调递增，直接拒绝旧锁持有者的过期请求；第二，结合 Redlock 多节点多数派投票机制，在网络分区时单边无法凑齐法定节点（Quorum），主动阻塞加锁并向客户端返回限流重试；第三，配置快速熔断与对账补偿机制，保障系统在极端故障下的自愈与数据准确。"
+                )
+            else:
+                return (
+                    "面对高并发流量洪峰与数据一致性要求，在我的实际工程落地中，主要从以下三层架构来系统性解决：\n"
+                    "第一，在接入层与防击穿方面，我们采用基于 Redisson 的分布式锁并结合主动缓存预热。针对热点 Key 设置随机过期时间打散，避免大规模 Key 同时失效引发雪崩。\n"
+                    "第二，在数据一致性保障上，针对‘读多写少’业务，我们采用‘Cache-Aside + Canal 监听 MySQL Binlog’的异步补偿机制，避免同步双删中因网络抖动产生的并发脏读，将接口响应延迟稳定控制在 5ms 内。\n"
+                    "第三，在容灾兜底方面，配置 Sentinel 进行集群限流与核心接口降级熔断，配合降级静态兜底数据，确保全链路服务高可用。"
+                )
+
         # 5. Check if it's Management Specialist
         if "管理岗与技术战略面试官" in system_prompt or "Management" in system_prompt or "管理岗" in system_prompt:
             return "了解了你的技术背景。作为技术团队核心或架构管理岗，不仅要关注工程实现，还需要平衡团队效能与研发交付价值。请聊聊在团队面对紧急重大业务交付与历史技术债务（如老旧单体服务架构臃肿）的冲突时，你通常如何制定演进路线图并向上汇报争取资源？"
 
-        # 6. Check if it's Technical Specialist
+        # 6. Check if it's Programmer Interviewer (check before Technical Specialist)
+        if "程序员综合面试官" in system_prompt or "Programmer Interviewer" in system_prompt:
+            return "听你讲完项目经历，我们对一下基础。你在简历里提到用 Redis 做缓存，先说说缓存穿透、击穿、雪崩分别是怎么回事，你们项目里是怎么防的？"
+
+        # 7. Check if it's Technical Specialist
         if "专业技术面试官" in system_prompt or "Technical Specialist" in system_prompt:
             return "很好，了解了你的背景。你在简历中提到了核心系统高可用架构的实践，请具体聊聊在流量洪峰来临时，你们是如何设计多级缓存架构与防雪崩机制的？在一致性要求极高的场景下，你如何权衡性能与数据准确性？"
 

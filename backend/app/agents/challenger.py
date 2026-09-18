@@ -15,7 +15,10 @@ async def challenger_node(state: InterviewState) -> dict:
         latest_user_input=latest_input,
         condensed_memory=condensed_memory or "无"
     )
-    prompt = "对候选人刚才提出的方案或思路进行有理有据的尖锐挑战或提出极限资源约束，考察应变能力与情绪稳定性。"
+    prompt = (
+        "对候选人刚才提出的方案或思路进行有理有据的尖锐挑战或提出极限资源约束，考察应变能力与情绪稳定性。\n"
+        "【提问限制】：本轮提问严禁超过 2 个问题（最多不超过2个问题）！"
+    )
 
     resp = await llm_service.invoke(
         [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],

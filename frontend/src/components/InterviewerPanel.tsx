@@ -1,16 +1,19 @@
 import React from 'react';
-import { UserCheck, Code2, Users2, Zap, Eye, Radio, Briefcase } from 'lucide-react';
+import { UserCheck, Code2, Users2, Zap, Eye, Radio, Briefcase, Terminal } from 'lucide-react';
+import type { PersonaDisplayInfo } from '../utils/interviewers';
 
 interface InterviewerPanelProps {
   currentInterviewer: string;
   isThinking?: boolean;
   shadowLogsCount?: number;
+  customPersonas?: PersonaDisplayInfo[];
 }
 
 export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
   currentInterviewer,
   isThinking = false,
   shadowLogsCount = 0,
+  customPersonas,
 }) => {
   const interviewers = [
     {
@@ -30,6 +33,15 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
       color: 'from-cyan-500 to-teal-600',
       activeBorder: 'border-cyan-500 shadow-cyan-500/20',
       desc: '高并发、底层原理、系统架构与方案层层深挖',
+    },
+    {
+      id: 'programmer',
+      name: '吴博闻',
+      role: '程序员综合面试官 (Programmer)',
+      icon: Terminal,
+      color: 'from-orange-500 to-amber-600',
+      activeBorder: 'border-orange-500 shadow-orange-500/20',
+      desc: '项目经历 + 计算机基础轮转 + 代码题，大厂一二面全真流程',
     },
     {
       id: 'hr',
@@ -60,6 +72,29 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
     },
   ];
 
+  // 自定义人设席位（key 形如 persona_xxxx；活跃判断与消息 name 一致）
+  const personaSeats = (customPersonas || []).map((p, idx) => ({
+    id: p.key,
+    name: p.name,
+    role: `自定义面试官 (Persona ${idx + 1})`,
+    icon: null,
+    emoji: p.avatar || '🎭',
+    color: 'from-violet-500 to-fuchsia-600',
+    activeBorder: 'border-violet-500 shadow-violet-500/20',
+    desc: p.description || '用户自定义面试官角色',
+  }));
+
+  const seats: Array<{
+    id: string;
+    name: string;
+    role: string;
+    icon: React.ComponentType<{ className?: string }> | null;
+    emoji?: string;
+    color: string;
+    activeBorder: string;
+    desc: string;
+  }> = [...interviewers, ...personaSeats];
+
   return (
     <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 backdrop-blur">
       <div className="flex items-center justify-between mb-3 px-1">
@@ -80,8 +115,12 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-        {interviewers.map((agent) => {
+      <div
+        className={`grid grid-cols-2 sm:grid-cols-3 gap-2.5 ${
+          seats.length > 6 ? 'lg:grid-cols-4' : 'lg:grid-cols-6'
+        }`}
+      >
+        {seats.map((agent) => {
           const isActive = currentInterviewer === agent.id;
           const IconComponent = agent.icon;
 
@@ -104,7 +143,11 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
                 <div
                   className={`w-8 h-8 rounded-lg bg-gradient-to-br ${agent.color} flex items-center justify-center shrink-0 shadow-md`}
                 >
-                  <IconComponent className="w-4 h-4 text-white" />
+                  {IconComponent ? (
+                    <IconComponent className="w-4 h-4 text-white" />
+                  ) : (
+                    <span className="text-sm leading-none">{agent.emoji}</span>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">

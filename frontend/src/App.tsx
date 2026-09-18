@@ -4,13 +4,15 @@ import { SetupView } from './components/SetupView';
 import { InterviewRoom } from './components/InterviewRoom';
 import { ReportView } from './components/ReportView';
 import { HistoryView } from './components/HistoryView';
+import { PersonaLibraryView } from './components/PersonaLibraryView';
 import { PrivacyModeProvider } from './context/PrivacyModeContext';
 import { AuthProvider } from './context/AuthContext';
 import { loadLLMConfig } from './utils/llmConfig';
+import type { PersonaDisplayInfo } from './utils/interviewers';
 import type { Message, EvaluationReport, InterviewType, IndustryType, SeniorityLevel, DifficultyLevel } from './types';
 
 export function App() {
-  const [view, setView] = useState<'setup' | 'interview' | 'report' | 'history'>('setup');
+  const [view, setView] = useState<'setup' | 'interview' | 'report' | 'history' | 'personas'>('setup');
   const [sessionId, setSessionId] = useState<string>('');
   const [stage, setStage] = useState<string>('setup');
   const [currentInterviewer, setCurrentInterviewer] = useState<string>('orchestrator');
@@ -21,6 +23,8 @@ export function App() {
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [report, setReport] = useState<EvaluationReport | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(false);
+  const [activePersonas, setActivePersonas] = useState<PersonaDisplayInfo[]>([]);
 
   // Timer during interview (freeze when paused)
   useEffect(() => {
@@ -46,9 +50,20 @@ export function App() {
     difficulty: DifficultyLevel;
     style: string;
     language: string;
+    webSearchEnabled: boolean;
+    maxRounds?: number;
     customConfig?: any;
   }) => {
     setIsThinking(true);
+    setWebSearchEnabled(config.webSearchEnabled);
+    setActivePersonas(
+      (config.customConfig?.personas || []).map((p: any) => ({
+        key: p.key,
+        name: p.name,
+        avatar: p.avatar,
+        description: p.description,
+      }))
+    );
     try {
       const llmConfig = loadLLMConfig();
       const token = localStorage.getItem('interview_copilot_token');
@@ -69,7 +84,9 @@ export function App() {
           difficulty: config.difficulty,
           style: config.style,
           language: config.language,
+          web_search_enabled: config.webSearchEnabled,
           custom_config: config.customConfig,
+          max_rounds: config.maxRounds,
           ...(llmConfig ? { llm_config: llmConfig } : {}),
         }),
       });
@@ -239,6 +256,42 @@ export function App() {
     }
   };
 
+  // 7.1 Toggle Web Search
+  const handleToggleWebSearch = async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/v1/interviews/${sessionId}/toggle-web-search`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWebSearchEnabled(data.web_search_enabled);
+      }
+    } catch (err) {
+      console.error('Failed to toggle web search:', err);
+    }
+  };
+
+  // 7.2 Simulate Standard Answer
+  const handleSimulateAnswer = async (): Promise<string | void> => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/v1/interviews/${sessionId}/simulate-answer`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.standard_answer;
+      } else {
+        const err = await res.json();
+        alert(err.detail || '构思标准回答失败');
+      }
+    } catch (err) {
+      console.error('Failed to simulate answer:', err);
+      alert('构思标准回答失败，请检查服务状态');
+    }
+  };
+
   // 8. Finish Interview & Generate Report
   const handleFinishInterview = async () => {
     if (!sessionId) return;
@@ -292,6 +345,7 @@ export function App() {
     setShadowLogsCount(0);
     setElapsedSeconds(0);
     setStatus('ready');
+    setActivePersonas([]);
     setView('setup');
   };
 
@@ -304,6 +358,7 @@ export function App() {
             elapsedSeconds={elapsedSeconds}
             status={status}
             onNavigateHistory={() => setView('history')}
+            onNavigatePersonas={() => setView('personas')}
             onNavigateHome={handleRestart}
           />
 
@@ -322,6 +377,7 @@ export function App() {
                 lifelinesUsed={lifelinesUsed}
                 isThinking={isThinking}
                 shadowLogsCount={shadowLogsCount}
+                customPersonas={activePersonas}
                 onSendMessage={handleSendMessage}
                 onRequestLifeline={handleRequestLifeline}
                 onFinishInterview={handleFinishInterview}
@@ -329,11 +385,18 @@ export function App() {
                 onResumeInterview={handleResumeInterview}
                 onRedoTurn={handleRedoTurn}
                 onRestartInterview={handleRestartInterview}
+                webSearchEnabled={webSearchEnabled}
+                onToggleWebSearch={handleToggleWebSearch}
+                onSimulateAnswer={handleSimulateAnswer}
               />
             )}
 
+            {view === 'personas' && (
+              <PersonaLibraryView onBack={() => setView('setup')} />
+            )}
+
             {view === 'report' && report && (
-              <ReportView report={report} onRestart={handleRestart} />
+              <ReportView report={report} onRestart={handleRestart} sessionId={sessionId} />
             )}
 
             {view === 'history' && (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -70,7 +71,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onClos
     }
   };
 
-  return (
+  // 用 Portal 渲染到 body：header 的 backdrop-blur 会成为 fixed 子元素的包含块，导致弹窗贴顶不居中
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
       <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-lg p-6 relative shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Close Button */}
@@ -256,6 +258,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onClos
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

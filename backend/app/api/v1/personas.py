@@ -1,0 +1,157 @@
+import uuid
+import secrets
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.db import get_db
+from app.models.user import User
+from app.models.persona import InterviewerPersona
+from app.core.security import get_current_user_required
+
+router = APIRouter(prefix="/personas", tags=["personas"])
+
+MAX_SYSTEM_PROMPT_LENGTH = 2000
+PERSONA_KEY_PREFIX = "persona_"
+
+
+def _generate_persona_key() -> str:
+    """生成消息 name / 路由标识用的短 key（interview_messages.name 限 32 字符）。"""
+    return f"{PERSONA_KEY_PREFIX}{secrets.token_hex(4)}"
+
+
+def _persona_snapshot(p: InterviewerPersona) -> dict:
+    """返回写入会话 custom_config 的完整人设快照。"""
+    return {
+        "id": p.id,
+        "key": p.key,
+        "name": p.name,
+        "avatar": p.avatar or "🎭",
+        "description": p.description or "",
+        "system_prompt": p.system_prompt,
+        "focus_topics": p.focus_topics or [],
+        "opening_hint": p.opening_hint or "",
+        "deep_dive_hint": p.deep_dive_hint or "",
+        "probe_hint": p.probe_hint or "",
+        "switch_hint": p.switch_hint or "",
+    }
+
+
+def _persona_response(p: InterviewerPersona) -> dict:
+    data = _persona_snapshot(p)
+    data["enabled"] = bool(p.enabled)
+    data["created_at"] = p.created_at.isoformat() if p.created_at else None
+    data["updated_at"] = p.updated_at.isoformat() if p.updated_at else None
+    return data
+
+
+class PersonaPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=32)
+    avatar: Optional[str] = Field(default="🎭", max_length=8)
+    description: str = Field(default="", max_length=128)
+    system_prompt: str = Field(min_length=5, max_length=MAX_SYSTEM_PROMPT_LENGTH)
+    focus_topics: List[str] = Field(default_factory=list)
+    opening_hint: str = Field(default="", max_length=400)
+    deep_dive_hint: str = Field(default="", max_length=400)
+    probe_hint: str = Field(default="", max_length=400)
+    switch_hint: str = Field(default="", max_length=400)
+    enabled: bool = True
+
+    @field_validator("focus_topics")
+    @classmethod
+    def normalize_focus_topics(cls, v: List[str]) -> List[str]:
+        cleaned = [t.strip() for t in (v or []) if t and t.strip()]
+        return cleaned[:8]
+
+
+async def _get_owned_persona(persona_id: str, user: User, db: AsyncSession) -> InterviewerPersona:
+    result = await db.execute(
+        select(InterviewerPersona).where(
+            InterviewerPersona.id == persona_id,
+            InterviewerPersona.user_id == user.id,
+        )
+    )
+    persona = result.scalars().first()
+    if not persona:
+        raise HTTPException(status_code=404, detail="面试官角色不存在")
+    return persona
+
+
+@router.get("")
+async def list_personas(
+    user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出当前用户的自定义面试官角色。"""
+    result = await db.execute(
+        select(InterviewerPersona)
+        .where(InterviewerPersona.user_id == user.id)
+        .order_by(InterviewerPersona.created_at.desc())
+    )
+    return {"personas": [_persona_response(p) for p in result.scalars().all()]}
+
+
+@router.post("")
+async def create_persona(
+    payload: PersonaPayload,
+    user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建自定义面试官角色。"""
+    persona = InterviewerPersona(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        key=_generate_persona_key(),
+        name=payload.name.strip(),
+        avatar=payload.avatar or "🎭",
+        description=payload.description.strip(),
+        system_prompt=payload.system_prompt.strip(),
+        focus_topics=payload.focus_topics,
+        opening_hint=payload.opening_hint.strip(),
+        deep_dive_hint=payload.deep_dive_hint.strip(),
+        probe_hint=payload.probe_hint.strip(),
+        switch_hint=payload.switch_hint.strip(),
+        enabled=payload.enabled,
+    )
+    db.add(persona)
+    await db.commit()
+    await db.refresh(persona)
+    return {"status": "success", "persona": _persona_response(persona)}
+
+
+@router.put("/{persona_id}")
+async def update_persona(
+    persona_id: str,
+    payload: PersonaPayload,
+    user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新自定义面试官角色（不影响已快照进历史会话的人设）。"""
+    persona = await _get_owned_persona(persona_id, user, db)
+    persona.name = payload.name.strip()
+    persona.avatar = payload.avatar or "🎭"
+    persona.description = payload.description.strip()
+    persona.system_prompt = payload.system_prompt.strip()
+    persona.focus_topics = payload.focus_topics
+    persona.opening_hint = payload.opening_hint.strip()
+    persona.deep_dive_hint = payload.deep_dive_hint.strip()
+    persona.probe_hint = payload.probe_hint.strip()
+    persona.switch_hint = payload.switch_hint.strip()
+    persona.enabled = payload.enabled
+    await db.commit()
+    await db.refresh(persona)
+    return {"status": "success", "persona": _persona_response(persona)}
+
+
+@router.delete("/{persona_id}")
+async def delete_persona(
+    persona_id: str,
+    user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除自定义面试官角色（已创建的会话使用快照，不受影响）。"""
+    persona = await _get_owned_persona(persona_id, user, db)
+    await db.delete(persona)
+    await db.commit()
+    return {"status": "success", "message": "已删除面试官角色"}
