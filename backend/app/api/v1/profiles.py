@@ -80,6 +80,23 @@ async def upload_resume_file(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"文件处理失败: {str(e)}")
 
+@router.get("/resumes/{resume_id}")
+async def get_saved_resume_detail(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get full content of a saved resume (list endpoint only returns a preview)."""
+    resume = await db.get(SavedResume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在或已被删除")
+    return {
+        "id": resume.id,
+        "filename": resume.filename,
+        "created_at": resume.created_at.isoformat() if resume.created_at else None,
+        "parsed_profile": resume.parsed_profile,
+        "raw_text": resume.raw_text,
+    }
+
 @router.get("/resumes")
 async def get_saved_resumes(
     db: AsyncSession = Depends(get_db)
@@ -101,3 +118,25 @@ async def get_saved_resumes(
             for r in resumes
         ]
     }
+
+
+@router.delete("/resumes/{resume_id}")
+async def delete_saved_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a saved resume and remove physical file if it exists."""
+    resume = await db.get(SavedResume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在或已被删除")
+
+    if resume.file_path and os.path.exists(resume.file_path):
+        try:
+            os.remove(resume.file_path)
+        except Exception:
+            pass
+
+    await db.delete(resume)
+    await db.commit()
+    return {"status": "success", "message": "简历已成功删除", "resume_id": resume_id}
+

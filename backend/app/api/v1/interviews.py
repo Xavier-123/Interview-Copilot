@@ -1,7 +1,7 @@
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from app.services.session_manager import session_manager
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
@@ -42,6 +42,9 @@ class ToggleWebSearchRequest(BaseModel):
 class CompareRequest(BaseModel):
     session_id_1: str
     session_id_2: str
+
+class BatchDeleteRequest(BaseModel):
+    session_ids: List[str]
 
 @router.get("/scenarios")
 async def list_company_scenarios():
@@ -249,6 +252,14 @@ async def delete_interview_record(session_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="记录未找到或删除失败")
     return {"status": "success", "message": "已删除面试记录"}
+
+@router.post("/history/batch-delete")
+async def batch_delete_interview_records(req: BatchDeleteRequest):
+    """Batch delete interview sessions and their reports."""
+    if not req.session_ids:
+        raise HTTPException(status_code=400, detail="session_ids 不能为空")
+    deleted = await session_manager.delete_sessions(req.session_ids)
+    return {"status": "success", "deleted": deleted}
 
 @router.get("/{session_id}")
 async def get_session_state(session_id: str):

@@ -6,6 +6,10 @@
  * 2. 标签页伪装：浏览器 Title 自动伪装为 Dev Copilot。
  * 3. 实时响应：通过 MutationObserver 监控动态 DOM 变化（定时器跳动、实时对话推送等）并实时脱敏。
  * 4. 无损切换：基于 WeakMap 缓存原始文本，退出时瞬时还原真实文本，不污染底层 React 状态与存储数据。
+ *
+ * 输入框策略：受控 input/textarea 的 value 完全交给 React state 管理，本引擎只脱敏
+ * placeholder，绝不改写 value；未聚焦输入框的视觉遮蔽由 CSS 模糊（body.privacy-mode-active）承担，
+ * 聚焦编辑时正常显示原文，保证受控组件数据始终无损。
  */
 
 export const SENSITIVE_WORD_MAP: Array<[RegExp, string]> = [
@@ -65,7 +69,6 @@ export function desensitizeText(text: string): string {
 // 缓存原始文本与属性的 WeakMap，无任何内存泄漏风险
 const originalTextMap = new WeakMap<Node, string>();
 const originalAttrMap = new WeakMap<Element, Record<string, string>>();
-const originalValueMap = new WeakMap<HTMLInputElement | HTMLTextAreaElement, string>();
 
 let observer: MutationObserver | null = null;
 let isMutating = false;
@@ -74,6 +77,30 @@ let originalTitle = '';
 
 const DISGUISE_TITLE = 'Dev Copilot';
 const DEFAULT_ORIGINAL_TITLE = 'Interview-Copilot - 多 Agent 模拟面试与持续训练闭环';
+
+// 非聚焦的文本输入框用 CSS 模糊遮蔽（不修改 value，避免污染 React 受控状态）
+const PRIVACY_BLUR_STYLE_ID = 'privacy-mode-input-blur';
+const PRIVACY_BLUR_CSS = `
+body.privacy-mode-active input:not(:focus):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=range]):not([type=color]):not([type=file]):not([type=image]),
+body.privacy-mode-active textarea:not(:focus) {
+  filter: blur(5px);
+  transition: filter 150ms ease;
+}
+`;
+
+function injectPrivacyBlurStyle() {
+  if (document.getElementById(PRIVACY_BLUR_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = PRIVACY_BLUR_STYLE_ID;
+  style.textContent = PRIVACY_BLUR_CSS;
+  document.head.appendChild(style);
+  document.body.classList.add('privacy-mode-active');
+}
+
+function removePrivacyBlurStyle() {
+  document.getElementById(PRIVACY_BLUR_STYLE_ID)?.remove();
+  document.body.classList.remove('privacy-mode-active');
+}
 
 /**
  * 遍历并脱敏单个文本节点
@@ -103,10 +130,13 @@ function processTextNode(node: Text) {
 }
 
 /**
- * 处理输入框与文本域的 placeholder 及显示 value
+ * 处理输入框与文本域的 placeholder
+ *
+ * 注意：刻意不修改 el.value —— 受控 input/textarea 的 value 由 React state 驱动，
+ * 直接改 DOM value 会在用户继续输入时把脱敏文本（MS/JL/GW 等代号）写回 state，
+ * 造成原始数据被永久污染。未聚焦输入框的视觉遮蔽由 CSS 模糊（privacy-mode-active）承担。
  */
 function processInputElement(el: HTMLInputElement | HTMLTextAreaElement) {
-  // 处理 placeholder
   if (el.placeholder) {
     let attrs = originalAttrMap.get(el);
     if (!attrs) {
@@ -119,18 +149,6 @@ function processInputElement(el: HTMLInputElement | HTMLTextAreaElement) {
     const desensitizedPlaceholder = desensitizeText(attrs.placeholder);
     if (el.placeholder !== desensitizedPlaceholder) {
       el.placeholder = desensitizedPlaceholder;
-    }
-  }
-
-  // 处理显示 value
-  if (el.value) {
-    if (!originalValueMap.has(el)) {
-      originalValueMap.set(el, el.value);
-    }
-    const orig = originalValueMap.get(el) || el.value;
-    const desensitizedVal = desensitizeText(orig);
-    if (el.value !== desensitizedVal) {
-      el.value = desensitizedVal;
     }
   }
 }
@@ -196,7 +214,10 @@ export function enablePrivacyMode() {
   // 2. 底层 DOM 节点脱敏
   applyPrivacyToSubtree(document.body);
 
-  // 3. 启动 MutationObserver 实现实时脱敏
+  // 3. 非聚焦输入框 CSS 模糊遮蔽
+  injectPrivacyBlurStyle();
+
+  // 4. 启动 MutationObserver 实现实时脱敏
   if (!observer) {
     observer = new MutationObserver((mutations) => {
       if (isMutating || !isEnabled) return;
@@ -268,22 +289,19 @@ export function disablePrivacyMode() {
       currentNode = walker.nextNode();
     }
 
-    // 3. 还原 input / textarea 的 placeholder 与 value
+    // 3. 还原 input / textarea 的 placeholder
     const inputs = document.body.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
     inputs.forEach((el) => {
       const attrs = originalAttrMap.get(el);
       if (attrs && 'placeholder' in attrs) {
         el.placeholder = attrs.placeholder;
       }
-      if (originalValueMap.has(el)) {
-        const orig = originalValueMap.get(el);
-        if (orig !== undefined) {
-          el.value = orig;
-        }
-      }
     });
 
-    // 4. 还原标签页 Title
+    // 4. 移除输入框模糊遮蔽
+    removePrivacyBlurStyle();
+
+    // 5. 还原标签页 Title
     document.title = originalTitle && originalTitle !== DISGUISE_TITLE ? originalTitle : DEFAULT_ORIGINAL_TITLE;
   } finally {
     isMutating = false;

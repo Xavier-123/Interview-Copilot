@@ -41,6 +41,14 @@ interface SetupViewProps {
     customPersonas?: PersonaDisplayInfo[];
   }) => void;
   isLoading: boolean;
+  prefillConfig?: {
+    resumeText?: string;
+    resumeTitle?: string;
+    jobRole?: string;
+    jdText?: string;
+    company?: string;
+    interviewRound?: string;
+  };
 }
 
 const SAMPLE_RESUMES = {
@@ -203,7 +211,11 @@ const INTERVIEW_TYPE_OPTIONS: Array<{
   },
 ];
 
-export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoading }) => {
+export const SetupView: React.FC<SetupViewProps> = ({
+  onStartInterview,
+  isLoading,
+  prefillConfig,
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // States
@@ -219,6 +231,22 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [searchConfigOpen, setSearchConfigOpen] = useState(false);
   const [hasLocalSearchKey, setHasLocalSearchKey] = useState(() => Boolean(loadSearchConfig()));
+
+  // 接收从简历管理或面试日程传来的预填信息
+  useEffect(() => {
+    if (prefillConfig?.resumeText) {
+      setResumeText(prefillConfig.resumeText);
+      if (prefillConfig.resumeTitle) {
+        setUploadSuccessName(prefillConfig.resumeTitle);
+      }
+    }
+    if (prefillConfig?.jdText) {
+      setJdText(prefillConfig.jdText);
+    }
+    if (prefillConfig?.jobRole) {
+      setJobRole(prefillConfig.jobRole);
+    }
+  }, [prefillConfig]);
 
   useEffect(() => {
     const refreshSearchConfig = () => setHasLocalSearchKey(Boolean(loadSearchConfig()));
@@ -240,6 +268,7 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
 
   // Saved user resumes
   const [userResumes, setUserResumes] = useState<Array<{ id: string; filename: string; raw_text_preview: string }>>([]);
+  const [isLoadingResume, setIsLoadingResume] = useState(false);
 
   const customModel = loadLLMConfig()?.model;
 
@@ -698,13 +727,32 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
             {userResumes.length > 0 && (
               <div className="mb-3">
                 <select
-                  onChange={(e) => {
-                    const found = userResumes.find((r) => r.id === e.target.value);
-                    if (found) setResumeText(found.raw_text_preview);
+                  onChange={async (e) => {
+                    const resumeId = e.target.value;
+                    if (!resumeId || isLoadingResume) return;
+                    setIsLoadingResume(true);
+                    try {
+                      // 历史列表只带 200 字预览，完整简历内容需按 id 拉取
+                      const res = await fetch(`/api/v1/profiles/resumes/${resumeId}`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        setResumeText(data.raw_text || '');
+                      } else {
+                        alert('加载历史简历失败，请稍后重试');
+                      }
+                    } catch (err) {
+                      console.error('Failed to load saved resume detail:', err);
+                      alert('加载历史简历失败，请检查网络连接');
+                    } finally {
+                      setIsLoadingResume(false);
+                    }
                   }}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  disabled={isLoadingResume}
                 >
-                  <option value="">-- 选择已保存的历史简历 --</option>
+                  <option value="">
+                    {isLoadingResume ? '-- 正在加载完整简历... --' : '-- 选择已保存的历史简历 --'}
+                  </option>
                   {userResumes.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.filename}

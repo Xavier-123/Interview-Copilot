@@ -38,6 +38,8 @@ interface InterviewRoomProps {
   isThinking: boolean;
   shadowLogsCount: number;
   webSearchEnabled: boolean;
+  /** 本场面试语言：zh | en，决定 STT/TTS 使用的语音 */
+  language?: string;
   customPersonas?: PersonaDisplayInfo[];
   /** 本场实际出场的面试官角色 key 列表，席位只展示这些成员 */
   participantRoles?: string[];
@@ -62,6 +64,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   isThinking,
   shadowLogsCount,
   webSearchEnabled,
+  language = 'zh',
   customPersonas,
   participantRoles,
   onSendMessage,
@@ -75,8 +78,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   onSimulateAnswer,
 }) => {
   const [inputText, setInputText] = useState('');
-  const [viewMode, setViewMode] = useState<'meeting' | 'chat'>('meeting');
-  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [viewMode, setViewMode] = useState<'meeting' | 'chat'>('chat');
+  const [isCameraOn, setIsCameraOn] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
   const [isTTSActive, setIsTTSActive] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -90,6 +93,9 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<any>(null);
 
+  // 语音语言跟随面试语言：英语面试用 en-US，其余用 zh-CN
+  const sttLang = language === 'en' ? 'en-US' : 'zh-CN';
+
   // Initialize Speech Recognition (STT)
   useEffect(() => {
     const SpeechRecognition =
@@ -99,7 +105,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = 'zh-CN';
+      recognition.lang = sttLang;
 
       recognition.onresult = (event: any) => {
         let currentTranscript = '';
@@ -123,7 +129,33 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
       recognitionRef.current = recognition;
     }
+
+    // 卸载时统一停止语音识别与语音播报，避免离开面试页后仍在录音/播报
+    return () => {
+      if (recognitionRef.current) {
+        // 先摘掉回调，防止 abort/stop 触发的 onend 在卸载后 setState
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          // 忽略未处于录音状态时的 abort 异常
+        }
+        recognitionRef.current = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
+
+  // 语言变化时同步到已创建的识别实例
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = sttLang;
+    }
+  }, [sttLang]);
 
   // Toggle STT Microphone
   const toggleMic = () => {
@@ -152,6 +184,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     window.speechSynthesis.cancel();
     const cleanText = text.replace(/[*#`_\[\]()]/g, '');
     const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = sttLang;
 
     switch (interviewerName) {
       case 'orchestrator':

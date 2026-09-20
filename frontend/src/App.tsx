@@ -1,19 +1,31 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
+import { HomeView } from './components/HomeView';
+import { ResumeManagementView } from './components/ResumeManagementView';
+import { InterviewManagementView } from './components/InterviewManagementView';
 import { SetupView } from './components/SetupView';
 import { InterviewRoom } from './components/InterviewRoom';
 import { ReportView } from './components/ReportView';
-import { HistoryView } from './components/HistoryView';
 import { PersonaLibraryView } from './components/PersonaLibraryView';
 import { PrivacyModeProvider } from './context/PrivacyModeContext';
 import { loadLLMConfig } from './utils/llmConfig';
 import { loadSearchConfig } from './utils/searchConfig';
 import { resolveInterviewerLineup } from './utils/interviewers';
 import type { PersonaDisplayInfo } from './utils/interviewers';
-import type { Message, EvaluationReport, InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, SimulateAnswerResult } from './types';
+import type {
+  Message,
+  EvaluationReport,
+  InterviewType,
+  IndustryType,
+  SeniorityLevel,
+  DifficultyLevel,
+  SimulateAnswerResult,
+  AppView,
+  InterviewScheduleItem,
+} from './types';
 
 export function App() {
-  const [view, setView] = useState<'setup' | 'interview' | 'report' | 'history' | 'personas'>('setup');
+  const [view, setView] = useState<AppView>('home');
   const [sessionId, setSessionId] = useState<string>('');
   const [stage, setStage] = useState<string>('setup');
   const [currentInterviewer, setCurrentInterviewer] = useState<string>('orchestrator');
@@ -25,9 +37,22 @@ export function App() {
   const [report, setReport] = useState<EvaluationReport | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(false);
+  // 本场面试语言（zh | en），传给 InterviewRoom 决定 STT/TTS 语音
+  const [interviewLanguage, setInterviewLanguage] = useState<string>('zh');
   const [activePersonas, setActivePersonas] = useState<PersonaDisplayInfo[]>([]);
   // 本场实际出场的面试官角色 key（含主考官），面试官席位只展示这些成员
   const [participantRoles, setParticipantRoles] = useState<string[]>([]);
+
+  // 跨页面传递的模拟面试预填数据（来自简历管理或面试日程）
+  const [setupPrefill, setSetupPrefill] = useState<{
+    resumeText?: string;
+    resumeTitle?: string;
+    jobRole?: string;
+    jdText?: string;
+    company?: string;
+    interviewRound?: string;
+  } | undefined>(undefined);
+
 
   // Timer during interview (freeze when paused)
   useEffect(() => {
@@ -61,6 +86,7 @@ export function App() {
   }) => {
     setIsThinking(true);
     setWebSearchEnabled(config.webSearchEnabled);
+    setInterviewLanguage(config.language || 'zh');
     const personaDisplay = config.customPersonas || [];
     setActivePersonas(personaDisplay);
     setParticipantRoles(
@@ -350,7 +376,24 @@ export function App() {
     }
   };
 
-  // 10. Restart / Return to Setup
+  // 从简历管理挑选简历开启模拟
+  const handleSelectResumeForMock = (resumeText: string, resumeTitle?: string) => {
+    setSetupPrefill({ resumeText, resumeTitle });
+    setView('setup');
+  };
+
+  // 从日程卡片针对岗位开启模拟
+  const handlePrepareForSchedule = (schedule: InterviewScheduleItem) => {
+    setSetupPrefill({
+      company: schedule.company,
+      jobRole: schedule.job_role,
+      jdText: schedule.jd_text,
+      interviewRound: schedule.interview_round,
+    });
+    setView('setup');
+  };
+
+  // 10. Restart / Return to Home
   const handleRestart = () => {
     setSessionId('');
     setStage('setup');
@@ -363,7 +406,8 @@ export function App() {
     setStatus('ready');
     setActivePersonas([]);
     setParticipantRoles([]);
-    setView('setup');
+    setSetupPrefill(undefined);
+    setView('home');
   };
 
   return (
@@ -373,15 +417,53 @@ export function App() {
             currentStage={stage}
             elapsedSeconds={elapsedSeconds}
             status={status}
+            currentView={view}
+            onNavigate={(v) => {
+              if (v === 'setup') setSetupPrefill(undefined);
+              setView(v);
+            }}
             inInterview={view === 'interview' || view === 'report'}
-            onNavigateHistory={() => setView('history')}
+            onNavigateHistory={() => setView('interviews')}
             onNavigatePersonas={() => setView('personas')}
             onNavigateHome={handleRestart}
           />
 
           <main className="flex-1">
+            {view === 'home' && (
+              <HomeView
+                onNavigate={(v) => {
+                  if (v === 'setup') setSetupPrefill(undefined);
+                  setView(v);
+                }}
+                onStartQuickMock={() => {
+                  setSetupPrefill(undefined);
+                  setView('setup');
+                }}
+                onPrepareForSchedule={handlePrepareForSchedule}
+              />
+            )}
+
+            {view === 'resumes' && (
+              <ResumeManagementView
+                onBack={() => setView('home')}
+                onSelectResumeForMock={handleSelectResumeForMock}
+              />
+            )}
+
+            {view === 'interviews' && (
+              <InterviewManagementView
+                onBack={() => setView('home')}
+                onViewReport={handleViewReportFromHistory}
+                onStartMockWithSchedule={handlePrepareForSchedule}
+              />
+            )}
+
             {view === 'setup' && (
-              <SetupView onStartInterview={handleStartInterview} isLoading={isThinking} />
+              <SetupView
+                onStartInterview={handleStartInterview}
+                isLoading={isThinking}
+                prefillConfig={setupPrefill}
+              />
             )}
 
             {view === 'interview' && (
@@ -404,23 +486,23 @@ export function App() {
                 onRedoTurn={handleRedoTurn}
                 onRestartInterview={handleRestartInterview}
                 webSearchEnabled={webSearchEnabled}
+                language={interviewLanguage}
                 onToggleWebSearch={handleToggleWebSearch}
                 onSimulateAnswer={handleSimulateAnswer}
               />
             )}
 
             {view === 'personas' && (
-              <PersonaLibraryView onBack={() => setView('setup')} />
+              <PersonaLibraryView onBack={() => setView('home')} />
             )}
 
             {view === 'report' && report && (
-              <ReportView report={report} onRestart={handleRestart} sessionId={sessionId} />
-            )}
-
-            {view === 'history' && (
-              <HistoryView
-                onBack={() => setView('setup')}
-                onViewReport={handleViewReportFromHistory}
+              <ReportView
+                report={report}
+                onRestart={handleRestart}
+                sessionId={sessionId}
+                onBack={() => setView('interviews')}
+                backLabel="返回面试管理"
               />
             )}
           </main>
@@ -430,3 +512,4 @@ export function App() {
 }
 
 export default App;
+

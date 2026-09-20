@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
-import { Bot, Sparkles, Clock, Shield, ShieldAlert, Settings, History, Users2 } from 'lucide-react';
+import { Bot, Sparkles, Clock, Shield, ShieldAlert, Settings, History, Users2, FileText, Calendar, LayoutDashboard } from 'lucide-react';
 import { usePrivacyMode } from '../context/privacyContext';
 import { SettingsModal } from './SettingsModal';
 import { loadLLMConfig } from '../utils/llmConfig';
+import type { AppView } from '../types';
 
 interface NavbarProps {
   currentStage: string;
   elapsedSeconds: number;
   status: string;
+  /** 当前主视图 */
+  currentView?: AppView;
+  /** 视图切换回调 */
+  onNavigate?: (view: AppView) => void;
   /** 当前是否处于面试/报告页面，用于决定是否渲染五段进度条 */
   inInterview?: boolean;
   onNavigateHistory?: () => void;
@@ -18,6 +23,8 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   currentStage,
   elapsedSeconds,
+  currentView = 'home',
+  onNavigate,
   inInterview = false,
   onNavigateHistory,
   onNavigatePersonas,
@@ -57,27 +64,83 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-        {/* Logo */}
+        {/* Left: Logo */}
         <div
-          onClick={onNavigateHome}
-          className="flex items-center space-x-3 cursor-pointer group"
+          onClick={() => {
+            if (onNavigate) onNavigate('home');
+            else if (onNavigateHome) onNavigateHome();
+          }}
+          className="flex items-center space-x-3 cursor-pointer group shrink-0"
         >
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition">
             <Bot className="w-6 h-6 text-white" />
           </div>
-          <div>
+          <div className="hidden sm:block">
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-lg bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">
+              <span className="font-bold text-base md:text-lg bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">
                 Interview-Copilot
               </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/60 text-blue-300 border border-blue-700/50 flex items-center space-x-1">
-                <Sparkles className="w-3 h-3 mr-0.5 text-blue-400" />
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-900/60 text-blue-300 border border-blue-700/50 flex items-center space-x-1">
+                <Sparkles className="w-2.5 h-2.5 mr-0.5 text-blue-400" />
                 Multi-Agent
               </span>
             </div>
-            <p className="text-xs text-gray-400">多 Agent 模拟面试与持续训练闭环</p>
+            <p className="text-[11px] text-gray-400">求职作战与多 Agent 模拟面试闭环</p>
           </div>
         </div>
+
+        {/* Center: Global Navigation Tabs */}
+        {onNavigate && (
+          <nav className="flex items-center space-x-1 bg-gray-900/70 p-1 rounded-xl border border-gray-800/80">
+            <button
+              onClick={() => onNavigate('home')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                currentView === 'home'
+                  ? 'bg-blue-600/30 text-blue-400 border border-blue-500/40 shadow-sm'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">首页</span>
+            </button>
+
+            <button
+              onClick={() => onNavigate('setup')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                currentView === 'setup' || currentView === 'interview' || currentView === 'report'
+                  ? 'bg-blue-600/30 text-blue-400 border border-blue-500/40 shadow-sm'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>模拟面试</span>
+            </button>
+
+            <button
+              onClick={() => onNavigate('resumes')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                currentView === 'resumes'
+                  ? 'bg-purple-600/30 text-purple-400 border border-purple-500/40 shadow-sm'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>简历管理</span>
+            </button>
+
+            <button
+              onClick={() => onNavigate('interviews')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                currentView === 'interviews'
+                  ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>面试管理</span>
+            </button>
+          </nav>
+        )}
 
         {/* Right Status & Controls */}
         <div className="flex items-center space-x-2 sm:space-x-3">
