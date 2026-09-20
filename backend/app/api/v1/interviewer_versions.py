@@ -22,6 +22,14 @@ async def list_interviewer_versions(interviewer_id: Optional[str] = None):
     return {"versions": await interviewer_registry.list_versions(interviewer_id)}
 
 
+@router.get("/{version_id}")
+async def get_interviewer_version(version_id: str):
+    version = await interviewer_registry.get_version(version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="面试官版本不存在")
+    return version
+
+
 @router.post("")
 async def create_interviewer_version(req: CreateInterviewerVersionRequest):
     return await interviewer_registry.create_version(

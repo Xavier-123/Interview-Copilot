@@ -9,6 +9,7 @@ from app.api.v1.personas import router as personas_router
 from app.api.v1.schedules import router as schedules_router
 from app.api.v1.search import router as search_router
 from app.api.v1.interviewer_versions import router as interviewer_versions_router
+from app.api.v1.memory import router as memory_router
 from app.api.ws.interview_stream import router as ws_router
 
 @asynccontextmanager
@@ -41,6 +42,7 @@ app.include_router(personas_router, prefix=settings.API_V1_STR)
 app.include_router(schedules_router, prefix=settings.API_V1_STR)
 app.include_router(search_router, prefix=settings.API_V1_STR)
 app.include_router(interviewer_versions_router, prefix=settings.API_V1_STR)
+app.include_router(memory_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix="/api")
 
 @app.get("/health", tags=["system"])

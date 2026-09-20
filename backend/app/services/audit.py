@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.models.persona import PersonaMemoryModel
+from app.models.architecture import AuditEventModel
 from app.agents.state import InterviewState
 from app.agents.llm import llm_service
 from app.models.db import AsyncSessionLocal
@@ -431,3 +432,37 @@ class InterviewerAuditService:
 
 
 audit_service = InterviewerAuditService()
+
+
+async def log_audit_event(
+    event_type: str,
+    actor: str,
+    target_id: Optional[str] = None,
+    trace_id: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
+    db: Optional[AsyncSession] = None,
+) -> str:
+    """Persist an audit event row to the audit_events table."""
+    import uuid
+    event_id = str(uuid.uuid4())
+    should_close = False
+    if db is None:
+        db = AsyncSessionLocal()
+        should_close = True
+    try:
+        db.add(AuditEventModel(
+            id=event_id,
+            event_type=event_type,
+            actor=actor,
+            target_id=target_id,
+            trace_id=trace_id,
+            payload=payload or {},
+        ))
+        await db.commit()
+        return event_id
+    except Exception as e:
+        logger.warning(f"Failed to write audit event '{event_type}': {e}")
+        return event_id
+    finally:
+        if should_close:
+            await db.close()

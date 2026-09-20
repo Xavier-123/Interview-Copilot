@@ -1,3 +1,4 @@
+import logging
 import uuid
 import secrets
 from typing import List, Optional
@@ -7,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import get_db
 from app.models.persona import InterviewerPersona
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/personas", tags=["personas"])
 
@@ -130,6 +133,14 @@ async def create_persona(
     db.add(persona)
     await db.commit()
     await db.refresh(persona)
+
+    # 同步为不可变 InterviewerVersion 并记录审计
+    try:
+        from app.services.interviewer_factory import interviewer_factory
+        await interviewer_factory.sync_persona_version(persona, created_by="user")
+    except Exception as e:
+        logger.warning(f"Failed to sync persona version: {e}")
+
     return {"status": "success", "persona": _persona_response(persona)}
 
 
@@ -139,7 +150,7 @@ async def update_persona(
     payload: PersonaPayload,
     db: AsyncSession = Depends(get_db),
 ):
-    """更新自定义面试官角色（不影响已快照进历史会话的人设）。"""
+    """更新自定义面试官角色（自动生成新版本，不影响已快照进历史会话的人设）。"""
     persona = await _get_persona(persona_id, db)
     persona.name = payload.name.strip()
     persona.avatar = payload.avatar or "🎭"
@@ -158,6 +169,14 @@ async def update_persona(
     persona.enabled = payload.enabled
     await db.commit()
     await db.refresh(persona)
+
+    # 产生新版本并记录审计
+    try:
+        from app.services.interviewer_factory import interviewer_factory
+        await interviewer_factory.sync_persona_version(persona, created_by="user")
+    except Exception as e:
+        logger.warning(f"Failed to sync persona version: {e}")
+
     return {"status": "success", "persona": _persona_response(persona)}
 
 
@@ -168,6 +187,20 @@ async def delete_persona(
 ):
     """删除自定义面试官角色（已创建的会话使用快照，不受影响）。"""
     persona = await _get_persona(persona_id, db)
+    persona_key = persona.key
+    persona_name = persona.name
     await db.delete(persona)
     await db.commit()
+
+    try:
+        from app.services.audit import log_audit_event
+        await log_audit_event(
+            event_type="persona_deleted",
+            actor="user",
+            target_id=persona_id,
+            payload={"key": persona_key, "name": persona_name}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log persona deletion audit: {e}")
+
     return {"status": "success", "message": "已删除面试官角色"}

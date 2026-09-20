@@ -56,7 +56,21 @@ class InterviewerVersionRegistry:
                     spec=spec,
                 ))
             await db.commit()
+            from app.services.audit import log_audit_event
+            await log_audit_event(
+                event_type="interviewer_version_created",
+                actor=created_by,
+                target_id=version_id,
+                payload={"interviewer_id": interviewer_id, "version": version, "status": "review_required"}
+            )
             return {"id": version_id, "interviewer_id": interviewer_id, "version": version, "status": "review_required"}
+
+    async def get_version(self, version_id: str) -> Optional[Dict[str, Any]]:
+        async with AsyncSessionLocal() as db:
+            item = await db.get(InterviewerVersionModel, version_id)
+            if not item:
+                return None
+            return self._serialize(item)
 
     async def list_versions(self, interviewer_id: Optional[str] = None) -> list[Dict[str, Any]]:
         async with AsyncSessionLocal() as db:
@@ -66,7 +80,7 @@ class InterviewerVersionRegistry:
             result = await db.execute(query)
             return [self._serialize(item) for item in result.scalars().all()]
 
-    async def approve(self, version_id: str) -> Dict[str, Any]:
+    async def approve(self, version_id: str, actor: str = "admin") -> Dict[str, Any]:
         async with AsyncSessionLocal() as db:
             version = await db.get(InterviewerVersionModel, version_id)
             if not version:
@@ -84,9 +98,16 @@ class InterviewerVersionRegistry:
                 parent.active_version_id = version.id
                 parent.spec = version.spec
             await db.commit()
+            from app.services.audit import log_audit_event
+            await log_audit_event(
+                event_type="interviewer_version_approved",
+                actor=actor,
+                target_id=version_id,
+                payload={"interviewer_id": version.interviewer_id, "version": version.version, "status": "champion"}
+            )
             return self._serialize(version)
 
-    async def rollback(self, version_id: str) -> Dict[str, Any]:
+    async def rollback(self, version_id: str, actor: str = "admin") -> Dict[str, Any]:
         async with AsyncSessionLocal() as db:
             target = await db.get(InterviewerVersionModel, version_id)
             if not target:
@@ -110,6 +131,13 @@ class InterviewerVersionRegistry:
                 parent.active_version_id = target.id
                 parent.spec = target.spec
             await db.commit()
+            from app.services.audit import log_audit_event
+            await log_audit_event(
+                event_type="interviewer_version_rolled_back",
+                actor=actor,
+                target_id=version_id,
+                payload={"interviewer_id": target.interviewer_id, "version": target.version, "status": "champion"}
+            )
             return self._serialize(target)
 
     @staticmethod
@@ -117,6 +145,7 @@ class InterviewerVersionRegistry:
         return {
             "id": item.id,
             "interviewer_id": item.interviewer_id,
+            "display_name": (item.spec or {}).get("display_name") or item.interviewer_id,
             "version": item.version,
             "status": item.status,
             "spec": item.spec or {},
