@@ -75,8 +75,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   onSimulateAnswer,
 }) => {
   const [inputText, setInputText] = useState('');
-  const [viewMode, setViewMode] = useState<'meeting' | 'chat'>('meeting');
-  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [viewMode, setViewMode] = useState<'meeting' | 'chat'>('chat');
+  const [isCameraOn, setIsCameraOn] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
   const [isTTSActive, setIsTTSActive] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -123,6 +123,25 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
       recognitionRef.current = recognition;
     }
+
+    // 卸载时统一停止语音识别与语音播报，避免离开面试页后仍在录音/播报
+    return () => {
+      if (recognitionRef.current) {
+        // 先摘掉回调，防止 abort/stop 触发的 onend 在卸载后 setState
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          // 忽略未处于录音状态时的 abort 异常
+        }
+        recognitionRef.current = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
 
   // Toggle STT Microphone

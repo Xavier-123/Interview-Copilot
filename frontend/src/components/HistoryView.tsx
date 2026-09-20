@@ -26,6 +26,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [showComparison, setShowComparison] = useState(false);
   const [transcriptSessionId, setTranscriptSessionId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -46,6 +48,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
     fetchHistory();
   }, []);
 
+  const showError = (msg: string) => {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 4000);
+  };
+
   const handleDelete = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('确认删除该场面试记录及复盘报告吗？')) return;
@@ -57,9 +64,44 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
       if (res.ok) {
         setHistory((prev) => prev.filter((s) => s.session_id !== sessionId));
         setSelectedSessions((prev) => prev.filter((id) => id !== sessionId));
+      } else {
+        showError('删除失败，请稍后重试');
       }
     } catch (err) {
       console.error('Failed to delete session:', err);
+      showError('删除失败，请检查网络连接');
+    }
+  };
+
+  const handleBatchDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const count = selectedSessions.length;
+    if (count === 0 || deleting) return;
+    if (!confirm(`确认删除选中的 ${count} 场面试记录及复盘报告吗？此操作不可恢复。`)) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/v1/interviews/history/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_ids: selectedSessions }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const deleted = data.deleted ?? 0;
+        setHistory((prev) => prev.filter((s) => !selectedSessions.includes(s.session_id)));
+        setSelectedSessions([]);
+        if (deleted < count) {
+          showError(`已删除 ${deleted} 条，${count - deleted} 条未找到或删除失败`);
+        }
+      } else {
+        showError('批量删除失败，请稍后重试');
+      }
+    } catch (err) {
+      console.error('Failed to batch delete sessions:', err);
+      showError('批量删除失败，请检查网络连接');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -68,12 +110,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
     if (selectedSessions.includes(sessionId)) {
       setSelectedSessions(selectedSessions.filter((id) => id !== sessionId));
     } else {
-      if (selectedSessions.length >= 2) {
-        // Keep max 2
-        setSelectedSessions([selectedSessions[1], sessionId]);
-      } else {
-        setSelectedSessions([...selectedSessions, sessionId]);
-      }
+      setSelectedSessions([...selectedSessions, sessionId]);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedSessions.length === history.length) {
+      setSelectedSessions([]);
+    } else {
+      setSelectedSessions(history.map((h) => h.session_id));
     }
   };
 
@@ -104,22 +149,56 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
             <span>模拟面试历史档案与演进对比</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            浏览所有历史模拟记录，勾选任意 2 场可一键发起雷达重叠对比与弱项攻坚分析
+            浏览所有历史模拟记录，勾选任意 2 场可一键发起雷达重叠对比与弱项攻坚分析，勾选后也可批量删除
           </p>
         </div>
 
-        {/* Comparison Trigger Button */}
-        {selectedSessions.length === 2 && (
-          <button
-            type="button"
-            onClick={() => setShowComparison(true)}
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/25 transition animate-pulse"
-          >
-            <TrendingUp className="w-4 h-4" />
-            <span>对比已勾选的 2 场面试</span>
-          </button>
-        )}
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {history.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="inline-flex items-center justify-center space-x-1.5 px-4 py-2.5 rounded-2xl bg-gray-900 border border-gray-700 hover:border-gray-500 text-gray-300 font-medium text-xs transition"
+            >
+              {selectedSessions.length === history.length ? (
+                <CheckSquare className="w-4 h-4 text-blue-400" />
+              ) : (
+                <Square className="w-4 h-4" />
+              )}
+              <span>{selectedSessions.length === history.length ? '取消全选' : '全选'}</span>
+            </button>
+          )}
+          {selectedSessions.length >= 1 && (
+            <button
+              type="button"
+              onClick={handleBatchDelete}
+              disabled={deleting}
+              className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-2xl bg-red-900/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 font-semibold text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>{deleting ? '正在删除...' : `批量删除 (${selectedSessions.length})`}</span>
+            </button>
+          )}
+          {selectedSessions.length === 2 && (
+            <button
+              type="button"
+              onClick={() => setShowComparison(true)}
+              className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/25 transition animate-pulse"
+            >
+              <TrendingUp className="w-4 h-4" />
+              <span>对比已勾选的 2 场面试</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Notice */}
+      {notice && (
+        <div className="px-4 py-2.5 rounded-xl bg-red-950/60 border border-red-800/60 text-red-300 text-xs">
+          {notice}
+        </div>
+      )}
 
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center space-y-3 text-gray-400 text-xs">
@@ -165,7 +244,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
                         type="button"
                         onClick={(e) => toggleSelect(item.session_id, e)}
                         className="text-gray-400 hover:text-blue-400 p-0.5"
-                        title="勾选用于对比"
+                        title="勾选用于对比（恰好 2 场）或批量删除"
                       >
                         {isSelected ? (
                           <CheckSquare className="w-4 h-4 text-blue-400" />

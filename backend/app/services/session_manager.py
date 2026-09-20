@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 import json
 import logging
@@ -51,6 +52,35 @@ class SessionManager:
         # In-memory cache for ultra-fast access, backed by SQLite DB
         self._sessions: Dict[str, InterviewState] = {}
         self._reports: Dict[str, Dict[str, Any]] = {}
+        # User-supplied model credentials are runtime-only.  They must never be
+        # embedded in InterviewState because that state is persisted and exposed
+        # by the session/transcript APIs.
+        self._llm_configs: Dict[str, Dict[str, Any]] = {}
+        self._finish_locks: Dict[str, asyncio.Lock] = {}
+
+    def _finish_lock(self, session_id: str) -> asyncio.Lock:
+        lock = self._finish_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._finish_locks[session_id] = lock
+        return lock
+
+    def _runtime_state(self, session_id: str, state: InterviewState) -> InterviewState:
+        """Return a transient graph input containing the session's private LLM config."""
+        runtime_state = dict(state)
+        llm_config = self._llm_configs.get(session_id)
+        if llm_config:
+            runtime_state["llm_config"] = llm_config
+        return runtime_state
+
+    @staticmethod
+    def _strip_private_state(state: Optional[InterviewState]) -> Optional[InterviewState]:
+        """Remove credentials from a state loaded from cache or legacy storage."""
+        if state is None:
+            return None
+        state = dict(state)
+        state.pop("llm_config", None)
+        return state
 
     async def create_session(
         self,
@@ -138,10 +168,10 @@ class SessionManager:
             "evaluation_logs": [],
             "status": "ready"
         }
-        if llm_config:
-            initial_state["llm_config"] = llm_config
-
         self._sessions[session_id] = initial_state
+        if llm_config:
+            # Keep the config available to the graph for this process only.
+            self._llm_configs[session_id] = dict(llm_config)
 
         # 3. Persist session to SQLite DB
         try:
@@ -164,7 +194,7 @@ class SessionManager:
                     company_scenario=company_scenario,
                     candidate_profile=candidate_profile,
                     jd_requirements=jd_requirements,
-                    interview_state=dict(initial_state)
+                    interview_state=self._strip_private_state(initial_state)
                 )
                 db.add(session_record)
                 await db.commit()
@@ -261,7 +291,9 @@ class SessionManager:
             raise ValueError(f"Session {session_id} not found")
 
         state["status"] = "in_progress"
-        new_state = await interview_app.ainvoke(state)
+        runtime_state = self._runtime_state(session_id, state)
+        new_state = await interview_app.ainvoke(runtime_state)
+        new_state = self._strip_private_state(new_state) or state
         self._sessions[session_id] = new_state
 
         await self._sync_state_to_db(session_id, new_state)
@@ -295,7 +327,9 @@ class SessionManager:
             if search_config
             else None
         )
-        new_state = await interview_app.ainvoke(state, config=run_config)
+        runtime_state = self._runtime_state(session_id, state)
+        new_state = await interview_app.ainvoke(runtime_state, config=run_config)
+        new_state = self._strip_private_state(new_state) or state
         self._sessions[session_id] = new_state
 
         await self._sync_state_to_db(session_id, new_state)
@@ -392,12 +426,21 @@ class SessionManager:
         self._sessions[session_id] = state
 
         # 重开一场：清空该会话历史消息行，避免与新一轮对话混淆
+        self._reports.pop(session_id, None)
+
         try:
             async with AsyncSessionLocal() as db:
                 await db.execute(
                     delete(InterviewMessageModel)
                     .where(InterviewMessageModel.session_id == session_id)
                 )
+                await db.execute(
+                    delete(InterviewReportModel)
+                    .where(InterviewReportModel.session_id == session_id)
+                )
+                record = await db.get(InterviewSessionModel, session_id)
+                if record:
+                    record.elapsed_seconds = 0
                 await db.commit()
         except Exception as e:
             logger.error(f"Failed to clear messages for restart: {e}")
@@ -441,46 +484,62 @@ class SessionManager:
         if not state:
             raise ValueError(f"Session {session_id} not found")
 
-        state["status"] = "finished"
-        report = await generate_evaluation_report(state)
+        async with self._finish_lock(session_id):
+            # A user can click finish while the automatic finish path is still
+            # running. Reuse the already generated report instead of inserting a
+            # second row with the unique session_id constraint.
+            if session_id in self._reports:
+                return self._reports[session_id]
 
-        # 触发面试官表现质检与自我进化闭环（沉淀黄金案例与避坑经验）
-        try:
-            audit_result = await audit_service.audit_session(state)
-            report["interviewer_audit"] = audit_result
-        except Exception as e:
-            logger.warning(f"Self-evolution audit failed: {e}")
+            detail = await self.get_session_detail(session_id)
+            if detail and detail.get("report"):
+                self._reports[session_id] = detail["report"]
+                return detail["report"]
 
-        self._reports[session_id] = report
+            state = await self._ensure_state(session_id)
+            if not state:
+                raise ValueError(f"Session {session_id} not found")
+            state["status"] = "finished"
+            runtime_state = self._runtime_state(session_id, state)
+            report = await generate_evaluation_report(runtime_state)
 
-        # Persist report and update session in DB
-        try:
-            async with AsyncSessionLocal() as db:
-                record = await db.get(InterviewSessionModel, session_id)
-                if record:
-                    record.status = "finished"
-                    record.round_count = state.get("round_count", 0)
-                    record.interview_state = dict(state)
+            # 触发面试官表现质检与自我进化闭环（沉淀黄金案例与避坑经验）
+            try:
+                audit_result = await audit_service.audit_session(runtime_state)
+                report["interviewer_audit"] = audit_result
+            except Exception as e:
+                logger.warning(f"Self-evolution audit failed: {e}")
 
-                report_record = InterviewReportModel(
-                    id=str(uuid.uuid4()),
-                    session_id=session_id,
-                    match_verdict=report.get("match_verdict", "建议通过"),
-                    overall_summary=report.get("overall_summary", ""),
-                    radar_scores=report.get("radar_scores", {}),
-                    strengths=report.get("strengths", []),
-                    weaknesses=report.get("weaknesses", []),
-                    detailed_reviews=report.get("detailed_reviews", []),
-                    learning_plan=report.get("learning_plan", []),
-                    seven_day_roadmap=report.get("seven_day_roadmap", []),
-                    drill_cards=report.get("drill_cards", [])
-                )
-                db.add(report_record)
-                await db.commit()
-        except Exception as e:
-            logger.error(f"Failed to persist report to DB: {e}")
+            self._reports[session_id] = report
 
-        return report
+            # Persist report and update session in DB
+            try:
+                async with AsyncSessionLocal() as db:
+                    record = await db.get(InterviewSessionModel, session_id)
+                    if record:
+                        record.status = "finished"
+                        record.round_count = state.get("round_count", 0)
+                        record.interview_state = self._strip_private_state(state)
+
+                    report_record = InterviewReportModel(
+                        id=str(uuid.uuid4()),
+                        session_id=session_id,
+                        match_verdict=report.get("match_verdict", "建议通过"),
+                        overall_summary=report.get("overall_summary", ""),
+                        radar_scores=report.get("radar_scores", {}),
+                        strengths=report.get("strengths", []),
+                        weaknesses=report.get("weaknesses", []),
+                        detailed_reviews=report.get("detailed_reviews", []),
+                        learning_plan=report.get("learning_plan", []),
+                        seven_day_roadmap=report.get("seven_day_roadmap", []),
+                        drill_cards=report.get("drill_cards", [])
+                    )
+                    db.add(report_record)
+                    await db.commit()
+            except Exception as e:
+                logger.error(f"Failed to persist report to DB: {e}")
+
+            return report
 
     async def get_history(self) -> List[Dict[str, Any]]:
         """Get history list of all interview sessions (local single-user mode)."""
@@ -537,7 +596,7 @@ class SessionManager:
                     s = result.scalars().first()
                     if s:
                         if not state and s.interview_state:
-                            state = s.interview_state
+                            state = self._strip_private_state(s.interview_state)
                             self._sessions[session_id] = state
                         if s.report:
                             report = {
@@ -815,6 +874,8 @@ class SessionManager:
         """Delete session from DB and cache."""
         self._sessions.pop(session_id, None)
         self._reports.pop(session_id, None)
+        self._llm_configs.pop(session_id, None)
+        self._finish_locks.pop(session_id, None)
         try:
             async with AsyncSessionLocal() as db:
                 record = await db.get(InterviewSessionModel, session_id)
@@ -826,21 +887,51 @@ class SessionManager:
             logger.error(f"Failed to delete session {session_id}: {e}")
         return False
 
+    async def delete_sessions(self, session_ids: List[str]) -> int:
+        """Delete multiple sessions from DB and cache; return the number of deleted rows."""
+        for sid in session_ids:
+            self._sessions.pop(sid, None)
+            self._reports.pop(sid, None)
+            self._llm_configs.pop(sid, None)
+            self._finish_locks.pop(sid, None)
+        async with AsyncSessionLocal() as db:
+            # bulk delete() 绕过 ORM 级联且 SQLite 默认不启用外键，需显式先删子表
+            await db.execute(
+                delete(InterviewMessageModel).where(
+                    InterviewMessageModel.session_id.in_(session_ids)
+                )
+            )
+            await db.execute(
+                delete(InterviewReportModel).where(
+                    InterviewReportModel.session_id.in_(session_ids)
+                )
+            )
+            result = await db.execute(
+                delete(InterviewSessionModel).where(
+                    InterviewSessionModel.id.in_(session_ids)
+                )
+            )
+            await db.commit()
+            return result.rowcount
+
     def get_session(self, session_id: str) -> Optional[InterviewState]:
-        return self._sessions.get(session_id)
+        return self._strip_private_state(self._sessions.get(session_id))
 
     def get_report(self, session_id: str) -> Optional[Dict[str, Any]]:
         return self._reports.get(session_id)
 
     async def _ensure_state(self, session_id: str) -> Optional[InterviewState]:
         if session_id in self._sessions:
-            return self._sessions[session_id]
+            state = self._strip_private_state(self._sessions[session_id])
+            self._sessions[session_id] = state or {}
+            return state
         # Try loading from DB
         try:
             async with AsyncSessionLocal() as db:
                 record = await db.get(InterviewSessionModel, session_id)
                 if record and record.interview_state:
-                    self._sessions[session_id] = record.interview_state
+                    state = self._strip_private_state(record.interview_state)
+                    self._sessions[session_id] = state or {}
                     return self._sessions[session_id]
         except Exception as e:
             logger.error(f"Failed to restore session from DB: {e}")
@@ -853,7 +944,7 @@ class SessionManager:
                 if record:
                     record.status = state.get("status", "in_progress")
                     record.round_count = state.get("round_count", 0)
-                    record.interview_state = dict(state)
+                    record.interview_state = self._strip_private_state(state)
 
                     # 全量增量同步消息（user + assistant 都落库，支持 redo/restart 回滚）
                     await self._sync_messages(db, session_id, state.get("messages", []))
@@ -975,7 +1066,7 @@ class SessionManager:
 
         resp = await llm_service.invoke(
             [SystemMessage(content=sys_msg), HumanMessage(content=user_prompt)],
-            llm_config=state.get("llm_config")
+            llm_config=self._llm_configs.get(session_id)
         )
 
         return {
