@@ -13,6 +13,7 @@ import {
   CheckCircle,
   AlertTriangle,
   BookOpen,
+  ArrowLeft,
   ArrowRight,
   RotateCcw,
   Sparkles,
@@ -30,9 +31,12 @@ interface ReportViewProps {
   report: EvaluationReport;
   onRestart: () => void;
   sessionId?: string;
+  /** 返回上一页（历史档案或控制台）；不传则不显示返回按钮 */
+  onBack?: () => void;
+  backLabel?: string;
 }
 
-export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessionId }) => {
+export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessionId, onBack, backLabel = '返回' }) => {
   const [copied, setCopied] = useState(false);
   const [activeDrillModal, setActiveDrillModal] = useState<DrillCardItem | null>(null);
   const [drillAnswer, setDrillAnswer] = useState('');
@@ -85,6 +89,18 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4 space-y-8 print:p-0 print:space-y-4">
+      {/* Back Navigation */}
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center space-x-1.5 text-xs text-gray-400 hover:text-white transition print:hidden"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>{backLabel}</span>
+        </button>
+      )}
+
       {/* 1. Header & Overall Verdict */}
       <div className="bg-gray-900/80 border border-gray-800 rounded-3xl p-6 sm:p-8 backdrop-blur shadow-xl relative overflow-hidden print:border-none print:shadow-none">
         <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />

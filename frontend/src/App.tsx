@@ -25,6 +25,10 @@ export function App() {
   const [report, setReport] = useState<EvaluationReport | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(false);
+  // 本场面试语言（zh | en），传给 InterviewRoom 决定 STT/TTS 语音
+  const [interviewLanguage, setInterviewLanguage] = useState<string>('zh');
+  // 报告页来源：历史档案返回历史列表，刚结束的面试返回控制台
+  const [reportReturnView, setReportReturnView] = useState<'setup' | 'history'>('setup');
   const [activePersonas, setActivePersonas] = useState<PersonaDisplayInfo[]>([]);
   // 本场实际出场的面试官角色 key（含主考官），面试官席位只展示这些成员
   const [participantRoles, setParticipantRoles] = useState<string[]>([]);
@@ -61,6 +65,7 @@ export function App() {
   }) => {
     setIsThinking(true);
     setWebSearchEnabled(config.webSearchEnabled);
+    setInterviewLanguage(config.language || 'zh');
     const personaDisplay = config.customPersonas || [];
     setActivePersonas(personaDisplay);
     setParticipantRoles(
@@ -320,6 +325,7 @@ export function App() {
       setReport(data.report);
       setStage('report');
       setStatus('finished');
+      setReportReturnView('setup');
       setView('report');
     } catch (error) {
       console.error('Failed to generate report:', error);
@@ -339,6 +345,7 @@ export function App() {
         setReport(data);
         setSessionId(targetSessionId);
         setStage('report');
+        setReportReturnView('history');
         setView('report');
       } else {
         alert('未找到该场面试的评估报告');
@@ -404,6 +411,7 @@ export function App() {
                 onRedoTurn={handleRedoTurn}
                 onRestartInterview={handleRestartInterview}
                 webSearchEnabled={webSearchEnabled}
+                language={interviewLanguage}
                 onToggleWebSearch={handleToggleWebSearch}
                 onSimulateAnswer={handleSimulateAnswer}
               />
@@ -414,7 +422,13 @@ export function App() {
             )}
 
             {view === 'report' && report && (
-              <ReportView report={report} onRestart={handleRestart} sessionId={sessionId} />
+              <ReportView
+                report={report}
+                onRestart={handleRestart}
+                sessionId={sessionId}
+                onBack={() => setView(reportReturnView === 'history' ? 'history' : 'setup')}
+                backLabel={reportReturnView === 'history' ? '返回历史档案' : '返回控制台'}
+              />
             )}
 
             {view === 'history' && (

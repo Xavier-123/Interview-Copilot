@@ -84,7 +84,25 @@ class DocumentParserService:
                     continue
             return file_bytes.decode("utf-8", errors="ignore")
 
-        # 3. DOCX or others
+        # 3. DOCX（ZIP 容器，需用 python-docx 按段落提取，不能当纯文本解码）
+        if lower_name.endswith(".docx"):
+            try:
+                import docx
+                document = docx.Document(io.BytesIO(file_bytes))
+                parts = [p.text for p in document.paragraphs if p.text and p.text.strip()]
+                for table in document.tables:
+                    for row in table.rows:
+                        row_text = " | ".join(
+                            cell.text.strip() for cell in row.cells if cell.text and cell.text.strip()
+                        )
+                        if row_text:
+                            parts.append(row_text)
+                return "\n".join(parts).strip()
+            except Exception as e:
+                logger.error(f"Failed to extract text from DOCX: {e}")
+                return ""
+
+        # 4. Others
         try:
             return file_bytes.decode("utf-8", errors="ignore")
         except Exception:
