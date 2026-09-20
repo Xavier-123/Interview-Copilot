@@ -40,9 +40,8 @@ def _is_base_url_allowed(base_url: str) -> bool:
 
     if (
         host == "localhost"
-        or host.endswith(".localhost")
-        or host.endswith(".internal")
-        or host.endswith(".local")
+        or "." not in host  # 无点单标签主机名只能经内网 DNS/搜索域解析
+        or host.endswith((".localhost", ".local", ".internal", ".corp", ".home", ".lan", ".arpa"))
     ):
         return False
 
