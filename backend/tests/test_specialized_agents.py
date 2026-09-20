@@ -88,7 +88,6 @@ async def test_anti_memorization_and_break_routine():
     # Test interviewer_utils instruction generation for BREAK_ROUTINE
     dummy_state: InterviewState = {
         "session_id": "test_break_routine",
-        "user_id": "test_user",
         "title": "测试面试",
         "stage": "technical",
         "current_interviewer": "technical",
@@ -156,7 +155,6 @@ async def test_interviewer_audit_and_self_evolution_engine():
     # Test mock session state for audit
     dummy_state: InterviewState = {
         "session_id": "test_audit_session",
-        "user_id": "test_user",
         "title": "测试审核面试",
         "stage": "technical",
         "current_interviewer": "preset_troubleshooter",

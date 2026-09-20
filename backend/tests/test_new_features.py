@@ -5,58 +5,6 @@ from app.main import app
 from app.models.db import init_db
 
 @pytest.mark.asyncio
-async def test_auth_and_profile_flow():
-    await init_db()
-    unique_user = f"user_{uuid.uuid4().hex[:8]}"
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # 1. Register
-        reg_res = await client.post("/api/v1/auth/register", json={
-            "username": unique_user,
-            "password": "secret_password_123",
-            "email": f"{unique_user}@example.com",
-            "real_name": "张开发",
-            "target_role": "资深后端专家",
-            "target_industry": "人工智能/大模型",
-            "target_level": "senior",
-            "experience_years": 4,
-            "skills": ["Python", "FastAPI", "Redis"]
-        })
-        assert reg_res.status_code == 200
-        reg_data = reg_res.json()
-        assert "access_token" in reg_data
-        token = reg_data["access_token"]
-        assert reg_data["user"]["username"] == unique_user
-
-        # 2. Login
-        login_res = await client.post("/api/v1/auth/login", json={
-            "username": unique_user,
-            "password": "secret_password_123"
-        })
-        assert login_res.status_code == 200
-        assert "access_token" in login_res.json()
-
-        # 3. Get profile (/me)
-        me_res = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert me_res.status_code == 200
-        me_data = me_res.json()
-        assert me_data["profile"]["real_name"] == "张开发"
-        assert me_data["profile"]["target_industry"] == "人工智能/大模型"
-
-        # 4. Update profile
-        update_res = await client.put("/api/v1/auth/profile", json={
-            "real_name": "张资深",
-            "experience_years": 5
-        }, headers={"Authorization": f"Bearer {token}"})
-        assert update_res.status_code == 200
-        assert update_res.json()["profile"]["real_name"] == "张资深"
-
-        # 5. Guest Login
-        guest_res = await client.post("/api/v1/auth/guest")
-        assert guest_res.status_code == 200
-        assert guest_res.json()["user"]["is_guest"] is True
-
-@pytest.mark.asyncio
 async def test_file_upload_resume():
     await init_db()
     transport = ASGITransport(app=app)

@@ -2,6 +2,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import declarative_base
 from app.core.config import settings
 
+import logging
+logger = logging.getLogger(__name__)
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
@@ -16,7 +19,7 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False
 )
 
-from sqlalchemy import text
+from sqlalchemy import text, inspect as sa_inspect
 
 Base = declarative_base()
 
@@ -27,9 +30,42 @@ async def get_db():
         finally:
             await session.close()
 
+# 含 user_id 遗留列的表：SQLite 无法直接 DROP 参与 FOREIGN KEY 定义的列，需整表重建
+_LEGACY_USER_TABLES = ("interview_sessions", "interviewer_personas", "user_resumes")
+
+
+def _rebuild_tables_without_user_id(sync_conn) -> None:
+    """单用户本地模式：把仍含 user_id 列的旧表重建为当前模型结构（幂等）。"""
+    insp = sa_inspect(sync_conn)
+    existing = set(insp.get_table_names())
+    for tname in _LEGACY_USER_TABLES:
+        if tname not in existing:
+            continue
+        old_cols = [c["name"] for c in insp.get_columns(tname)]
+        if "user_id" not in old_cols:
+            continue
+        legacy_indexes = [idx["name"] for idx in insp.get_indexes(tname) if idx["name"]]
+        keep = ", ".join(
+            c.name for c in Base.metadata.tables[tname].columns if c.name in old_cols
+        )
+        legacy_name = f"{tname}__legacy_user"
+        sync_conn.exec_driver_sql(f"ALTER TABLE {tname} RENAME TO {legacy_name}")
+        for idx in legacy_indexes:
+            sync_conn.exec_driver_sql(f"DROP INDEX IF EXISTS {idx}")
+        Base.metadata.tables[tname].create(bind=sync_conn)
+        sync_conn.exec_driver_sql(f"INSERT INTO {tname} ({keep}) SELECT {keep} FROM {legacy_name}")
+        sync_conn.exec_driver_sql(f"DROP TABLE {legacy_name}")
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # 单用户本地模式：移除账号体系遗留的表与 user_id 列（幂等迁移，DDL 在事务内原子生效）
+        try:
+            await conn.run_sync(_rebuild_tables_without_user_id)
+            await conn.execute(text("DROP TABLE IF EXISTS user_profiles"))
+            await conn.execute(text("DROP TABLE IF EXISTS users"))
+        except Exception as e:
+            logger.warning(f"Legacy user-column migration skipped: {e}")
         try:
             await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN web_search_enabled BOOLEAN DEFAULT 0"))
         except Exception:

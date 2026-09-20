@@ -6,7 +6,6 @@ import { ReportView } from './components/ReportView';
 import { HistoryView } from './components/HistoryView';
 import { PersonaLibraryView } from './components/PersonaLibraryView';
 import { PrivacyModeProvider } from './context/PrivacyModeContext';
-import { AuthProvider } from './context/AuthContext';
 import { loadLLMConfig } from './utils/llmConfig';
 import { loadSearchConfig } from './utils/searchConfig';
 import { resolveInterviewerLineup } from './utils/interviewers';
@@ -76,9 +75,7 @@ export function App() {
     );
     try {
       const llmConfig = loadLLMConfig();
-      const token = localStorage.getItem('interview_copilot_token');
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       // Create session
       const sessionRes = await fetch('/api/v1/interviews/session', {
@@ -370,13 +367,13 @@ export function App() {
   };
 
   return (
-    <AuthProvider>
-      <PrivacyModeProvider>
-        <div className="min-h-screen bg-[#0b0f19] text-gray-100 flex flex-col font-sans">
+    <PrivacyModeProvider>
+      <div className="min-h-screen bg-[#0b0f19] text-gray-100 flex flex-col font-sans">
           <Navbar
             currentStage={stage}
             elapsedSeconds={elapsedSeconds}
             status={status}
+            inInterview={view === 'interview' || view === 'report'}
             onNavigateHistory={() => setView('history')}
             onNavigatePersonas={() => setView('personas')}
             onNavigateHome={handleRestart}
@@ -427,9 +424,8 @@ export function App() {
               />
             )}
           </main>
-        </div>
-      </PrivacyModeProvider>
-    </AuthProvider>
+      </div>
+    </PrivacyModeProvider>
   );
 }
 

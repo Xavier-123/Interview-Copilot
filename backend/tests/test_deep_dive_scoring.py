@@ -9,7 +9,6 @@ from app.agents.state import InterviewState
 def create_mock_state(**kwargs) -> InterviewState:
     base: InterviewState = {
         "session_id": "test_session_001",
-        "user_id": "test_user",
         "stage": "technical",
         "current_interviewer": "technical",
         "next_interviewer": "candidate",

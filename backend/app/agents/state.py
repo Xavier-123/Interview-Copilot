@@ -32,7 +32,6 @@ class ShadowObservation(TypedDict):
 class InterviewStateBase(TypedDict):
     # Session metadata
     session_id: str
-    user_id: str
     title: str
     stage: str                      # icebreak | self_intro | technical | behavioral | hr | management | english | candidate_qa | conclusion
     current_interviewer: str        # orchestrator | technical | hr | challenger | management

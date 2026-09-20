@@ -332,7 +332,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
               }`}
             >
               <Tv className="w-3.5 h-3.5" />
-              <span>视频会议全真模式</span>
+              <span>视频会议模式</span>
             </button>
             <button
               type="button"

@@ -21,7 +21,6 @@ FOCUS_TOPICS = ["Kubernetes HPA 弹性伸缩", "etcd raft 选举机制"]
 def _state(**overrides) -> InterviewState:
     base: dict = {
         "session_id": "s1",
-        "user_id": "u1",
         "title": "定向考察模拟面试",
         "stage": "technical",
         "current_interviewer": "technical",

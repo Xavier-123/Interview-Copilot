@@ -6,9 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import get_db
-from app.models.user import User
 from app.models.persona import InterviewerPersona
-from app.core.security import get_current_user_required
 
 router = APIRouter(prefix="/personas", tags=["personas"])
 
@@ -75,12 +73,9 @@ class PersonaPayload(BaseModel):
         return cleaned[:8]
 
 
-async def _get_owned_persona(persona_id: str, user: User, db: AsyncSession) -> InterviewerPersona:
+async def _get_persona(persona_id: str, db: AsyncSession) -> InterviewerPersona:
     result = await db.execute(
-        select(InterviewerPersona).where(
-            InterviewerPersona.id == persona_id,
-            InterviewerPersona.user_id == user.id,
-        )
+        select(InterviewerPersona).where(InterviewerPersona.id == persona_id)
     )
     persona = result.scalars().first()
     if not persona:
@@ -97,13 +92,11 @@ async def get_persona_presets():
 
 @router.get("")
 async def list_personas(
-    user: User = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
-    """列出当前用户的自定义面试官角色。"""
+    """列出全部自定义面试官角色（本地单用户）。"""
     result = await db.execute(
         select(InterviewerPersona)
-        .where(InterviewerPersona.user_id == user.id)
         .order_by(InterviewerPersona.created_at.desc())
     )
     return {"personas": [_persona_response(p) for p in result.scalars().all()]}
@@ -112,13 +105,11 @@ async def list_personas(
 @router.post("")
 async def create_persona(
     payload: PersonaPayload,
-    user: User = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
     """创建自定义面试官角色。"""
     persona = InterviewerPersona(
         id=str(uuid.uuid4()),
-        user_id=user.id,
         key=_generate_persona_key(),
         name=payload.name.strip(),
         avatar=payload.avatar or "🎭",
@@ -146,11 +137,10 @@ async def create_persona(
 async def update_persona(
     persona_id: str,
     payload: PersonaPayload,
-    user: User = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
     """更新自定义面试官角色（不影响已快照进历史会话的人设）。"""
-    persona = await _get_owned_persona(persona_id, user, db)
+    persona = await _get_persona(persona_id, db)
     persona.name = payload.name.strip()
     persona.avatar = payload.avatar or "🎭"
     persona.description = payload.description.strip()
@@ -174,11 +164,10 @@ async def update_persona(
 @router.delete("/{persona_id}")
 async def delete_persona(
     persona_id: str,
-    user: User = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
     """删除自定义面试官角色（已创建的会话使用快照，不受影响）。"""
-    persona = await _get_owned_persona(persona_id, user, db)
+    persona = await _get_persona(persona_id, db)
     await db.delete(persona)
     await db.commit()
     return {"status": "success", "message": "已删除面试官角色"}

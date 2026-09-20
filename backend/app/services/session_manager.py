@@ -56,7 +56,6 @@ class SessionManager:
         self,
         resume_text: str = "",
         jd_text: str = "",
-        user_id: str = "guest_user",
         interview_type: str = "structured",
         industry: str = "互联网/电商",
         job_role: str = "后端开发",
@@ -75,7 +74,7 @@ class SessionManager:
         type_label = INTERVIEW_TYPE_LABELS.get(interview_type, interview_type)
 
         # 0. 解析自定义面试官阵容：将 persona:<id> 引用替换为稳定 key，并把人设快照进会话
-        custom_config = await self._resolve_custom_config(custom_config, user_id)
+        custom_config = await self._resolve_custom_config(custom_config)
 
         # 0.5 目标企业与业务线真实场景匹配
         if not company_scenario:
@@ -93,7 +92,6 @@ class SessionManager:
         # 2. Build initial state
         initial_state: InterviewState = {
             "session_id": session_id,
-            "user_id": user_id,
             "title": f"{job_role} - {type_label}模拟面试",
             "stage": "icebreak",
             "current_interviewer": "orchestrator",
@@ -150,7 +148,6 @@ class SessionManager:
             async with AsyncSessionLocal() as db:
                 session_record = InterviewSessionModel(
                     id=session_id,
-                    user_id=user_id,
                     title=initial_state["title"],
                     interview_type=interview_type,
                     industry=industry,
@@ -177,7 +174,7 @@ class SessionManager:
         return initial_state
 
     async def _resolve_custom_config(
-        self, custom_config: Optional[Dict[str, Any]], user_id: str
+        self, custom_config: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
         解析自定义面试配置中的自定义面试官引用与内置流派预设：
@@ -213,7 +210,6 @@ class SessionManager:
                     result = await db.execute(
                         select(InterviewerPersona).where(
                             InterviewerPersona.id.in_(persona_id_set),
-                            InterviewerPersona.user_id == user_id,
                             InterviewerPersona.enabled == True,  # noqa: E712
                         )
                     )
@@ -486,14 +482,13 @@ class SessionManager:
 
         return report
 
-    async def get_user_history(self, user_id: str) -> List[Dict[str, Any]]:
-        """Get history list of interview sessions for user."""
+    async def get_history(self) -> List[Dict[str, Any]]:
+        """Get history list of all interview sessions (local single-user mode)."""
         try:
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
                     select(InterviewSessionModel)
                     .options(selectinload(InterviewSessionModel.report))
-                    .where(InterviewSessionModel.user_id == user_id)
                     .order_by(desc(InterviewSessionModel.created_at))
                 )
                 sessions = result.scalars().all()

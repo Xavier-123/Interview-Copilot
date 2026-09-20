@@ -45,7 +45,7 @@ const BUILTIN_SEATS: Record<string, Omit<SeatCard, 'id'>> = {
     icon: Terminal,
     color: 'from-orange-500 to-amber-600',
     activeBorder: 'border-orange-500 shadow-orange-500/20',
-    desc: '项目经历 + 计算机基础轮转 + 代码题，大厂一二面全真流程',
+    desc: '项目经历 + 计算机基础轮转 + 代码题，大厂一二面完整流程',
   },
   hr: {
     name: '陈总监',

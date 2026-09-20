@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, JSON, ForeignKey, Boolean, Float
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, DateTime, Text, JSON, Boolean, Float
 from app.models.db import Base
 
 
@@ -14,7 +13,6 @@ class InterviewerPersona(Base):
     __tablename__ = "interviewer_personas"
 
     id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     key = Column(String(32), unique=True, index=True, nullable=False)  # 形如 persona_xxxx，用作消息 name 与路由标识
     name = Column(String(64), nullable=False)                          # 显示名，如“毒舌架构师”
     avatar = Column(String(8), default="🎭")                            # 头像 emoji
@@ -34,8 +32,6 @@ class InterviewerPersona(Base):
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    user = relationship("User", back_populates="personas")
 
 
 class PersonaMemoryModel(Base):

@@ -1,10 +1,8 @@
 from urllib.parse import quote
-from fastapi import APIRouter, HTTPException, Depends, Body, Response
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from app.services.session_manager import session_manager
-from app.core.security import get_current_user_optional
-from app.models.user import User
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
@@ -20,7 +18,6 @@ class CreateSessionRequest(BaseModel):
     language: Optional[str] = "zh"                # zh | en
     custom_config: Optional[Dict[str, Any]] = None
     company_scenario: Optional[Dict[str, Any]] = None
-    user_id: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
     web_search_enabled: Optional[bool] = False
     max_rounds: Optional[int] = None              # 轮次上限（None -> 后端默认 6；programmer 前端传 8）
@@ -53,17 +50,12 @@ async def list_company_scenarios():
     return {"scenarios": scenario_service.list_scenarios()}
 
 @router.post("/session")
-async def create_interview_session(
-    req: CreateSessionRequest,
-    current_user: Optional[User] = Depends(get_current_user_optional)
-):
+async def create_interview_session(req: CreateSessionRequest):
     """Create a new mock interview session with rich parameters."""
     try:
-        user_id = current_user.id if current_user else (req.user_id or "guest_user")
         state = await session_manager.create_session(
             resume_text=req.resume_text or "",
             jd_text=req.jd_text or "",
-            user_id=user_id,
             interview_type=req.interview_type or "structured",
             industry=req.industry or "互联网/电商",
             job_role=req.job_role or "后端开发",
@@ -234,12 +226,9 @@ async def finish_and_evaluate(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/history")
-async def get_interview_history(
-    current_user: Optional[User] = Depends(get_current_user_optional)
-):
-    """List interview history for current user (or guest)."""
-    user_id = current_user.id if current_user else "guest_user"
-    history = await session_manager.get_user_history(user_id)
+async def get_interview_history():
+    """List all interview history (local single-user mode)."""
+    history = await session_manager.get_history()
     return {"history": history}
 
 @router.post("/history/compare")

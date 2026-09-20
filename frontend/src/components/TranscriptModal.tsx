@@ -74,11 +74,8 @@ export const TranscriptModal: React.FC<TranscriptModalProps> = ({ sessionId, onC
     const fetchTranscript = async () => {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('interview_copilot_token');
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
       try {
-        const res = await fetch(`/api/v1/interviews/${sessionId}/transcript`, { headers });
+        const res = await fetch(`/api/v1/interviews/${sessionId}/transcript`);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.detail || '对话记录加载失败');

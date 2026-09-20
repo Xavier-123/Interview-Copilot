@@ -29,12 +29,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
 
   const fetchHistory = async () => {
     setLoading(true);
-    const token = localStorage.getItem('interview_copilot_token');
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
     try {
-      const res = await fetch('/api/v1/interviews/history', { headers });
+      const res = await fetch('/api/v1/interviews/history');
       if (res.ok) {
         const data = await res.json();
         setHistory(data.history || []);
@@ -135,7 +131,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
           <FileText className="w-12 h-12 text-gray-600 mx-auto" />
           <h3 className="text-sm font-semibold text-gray-300">暂无历史模拟面试记录</h3>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
-            立即完成一场全真多 Agent 模拟面试，系统将自动沉淀你的多维诊断报告与雷达数据。
+            立即完成一场多 Agent 模拟面试，系统将自动沉淀你的多维诊断报告与雷达数据。
           </p>
           <button
             onClick={onBack}

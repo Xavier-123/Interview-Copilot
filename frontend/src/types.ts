@@ -25,7 +25,7 @@ export const INTERVIEW_TYPE_LABELS: Record<string, string> = {
   behavioral: 'STAR行为面',
   hr: 'HR综合面',
   management: '管理岗面',
-  english: '英语全真面',
+  english: '英语面试',
   custom: '自选定制面',
 };
 
@@ -35,12 +35,60 @@ export const interviewTypeLabel = (type?: string | null): string =>
 export type IndustryType =
   | '互联网/电商'
   | '人工智能/大模型'
+  | '云计算/大数据'
   | '金融科技/量化'
-  | '智能制造/自动驾驶'
+  | '银行/证券/保险'
   | '企业服务/SaaS'
   | '游戏开发'
+  | '文化传媒/直播社交'
+  | '教育/在线教育'
+  | '智能制造/自动驾驶'
+  | '汽车/新能源车'
+  | '通信/芯片/半导体'
+  | '安防/物联网'
+  | '区块链/Web3'
+  | '新能源/电力/储能'
+  | '能源/化工/环保'
   | '医疗健康/生物医药'
+  | '物流/供应链'
+  | '消费品/零售'
+  | '生活服务/文旅酒店'
+  | '地产/建筑/智慧城市'
+  | '航空航天/国防'
+  | '政府/公共事业'
+  | '法律/咨询/人力资源'
+  | '农业/食品科技'
   | '通用行业';
+
+// 全量行业选项（SetupView 使用，避免多处列表漂移）
+export const INDUSTRY_OPTIONS: IndustryType[] = [
+  '互联网/电商',
+  '人工智能/大模型',
+  '云计算/大数据',
+  '金融科技/量化',
+  '银行/证券/保险',
+  '企业服务/SaaS',
+  '游戏开发',
+  '文化传媒/直播社交',
+  '教育/在线教育',
+  '智能制造/自动驾驶',
+  '汽车/新能源车',
+  '通信/芯片/半导体',
+  '安防/物联网',
+  '区块链/Web3',
+  '新能源/电力/储能',
+  '能源/化工/环保',
+  '医疗健康/生物医药',
+  '物流/供应链',
+  '消费品/零售',
+  '生活服务/文旅酒店',
+  '地产/建筑/智慧城市',
+  '航空航天/国防',
+  '政府/公共事业',
+  '法律/咨询/人力资源',
+  '农业/食品科技',
+  '通用行业',
+];
 
 export type SeniorityLevel = 'intern' | 'junior' | 'senior' | 'expert' | 'director';
 export type DifficultyLevel = 'easy' | 'standard' | 'hard';
@@ -238,24 +286,6 @@ export interface JDRequirements {
   preferred_skills?: string[];
   responsibilities?: string[];
   interview_focus?: string[];
-}
-
-export interface UserProfileData {
-  real_name: string;
-  target_role: string;
-  target_industry: string;
-  target_level: string;
-  experience_years: number;
-  skills: string[];
-  bio: string;
-}
-
-export interface UserData {
-  id: string;
-  username: string;
-  email?: string;
-  is_guest: boolean;
-  profile?: UserProfileData;
 }
 
 export interface HistorySessionItem {

@@ -16,12 +16,12 @@ import {
   Terminal,
   Sliders
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { loadLLMConfig } from '../utils/llmConfig';
 import { loadSearchConfig } from '../utils/searchConfig';
 import { SearchConfigModal } from './SearchConfigModal';
 import type { PersonaDisplayInfo } from '../utils/interviewers';
 import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, Persona } from '../types';
+import { INDUSTRY_OPTIONS } from '../types';
 
 interface SetupViewProps {
   onStartInterview: (config: {
@@ -109,25 +109,32 @@ const SAMPLE_JDS: Record<string, string> = {
 2. 具备优秀的大局观、跨部门协同推进能力与技术战略眼光。`,
 };
 
-const INDUSTRY_OPTIONS: IndustryType[] = [
-  '互联网/电商',
-  '人工智能/大模型',
-  '金融科技/量化',
-  '智能制造/自动驾驶',
-  '企业服务/SaaS',
-  '游戏开发',
-  '医疗健康/生物医药',
-  '通用行业',
-];
-
 const PRESET_ROLES: Record<IndustryType, string[]> = {
   '互联网/电商': ['资深后端开发', '高并发架构师', '前端架构师', '大数据平台开发', '研发效能/DevOps专家'],
-  '人工智能/大模型': ['大模型应用/Agent开发专家', '算法工程/RAG专家', 'AI基础设施/算力调度', '推荐算法工程师'],
+  '人工智能/大模型': ['大模型算法工程师', '大模型应用/Agent开发专家', '算法工程/RAG专家', 'AI基础设施/算力调度', '推荐算法工程师'],
+  '云计算/大数据': ['云原生/基础设施研发', 'SRE/稳定性保障', '大数据平台开发', '数据仓库/BI工程师', '数据库内核研发'],
   '金融科技/量化': ['量化系统研发', '核心清结算开发', '风控引擎架构师', '金融交易后端'],
-  '智能制造/自动驾驶': ['自动驾驶系统研发', '嵌入式/C++中间件', '车联网后端架构', '仿真平台开发'],
+  '银行/证券/保险': ['银行核心系统研发', '交易/清算系统开发', '量化风控策略', '精算与产品设计', '合规与反洗钱专员'],
   '企业服务/SaaS': ['SaaS多租户后端', '企业中台架构师', '分布式工作流系统', '前端全栈开发'],
   '游戏开发': ['游戏服务端主程', 'Unity/UE引擎开发', '游戏网络同步专家', '高性能游戏后端'],
+  '文化传媒/直播社交': ['推荐系统工程师', '直播/RTC研发', '短视频客户端研发', '内容安全策略', '内容运营专家'],
+  '教育/在线教育': ['教育产品研发', '直播课堂系统研发', '题库/自适应学习算法', '教研内容专家', '课程运营'],
+  '智能制造/自动驾驶': ['自动驾驶系统研发', '嵌入式/C++中间件', '车联网后端架构', '仿真平台开发'],
+  '汽车/新能源车': ['智能座舱软件研发', '自动驾驶感知算法', '整车电子电气架构', '三电系统工程师', '车联网平台研发'],
+  '通信/芯片/半导体': ['数字IC设计', '芯片验证工程师', '嵌入式固件研发', '通信协议栈研发', '射频/模拟IC工程师'],
+  '安防/物联网': ['视频图像算法', 'IoT平台研发', '嵌入式安防研发', '边缘计算工程师', '硬件测试工程师'],
+  '区块链/Web3': ['区块链底层研发', '智能合约工程师', 'DApp全栈开发', '密码学工程师', '链上数据分析'],
+  '新能源/电力/储能': ['BMS电池管理研发', '电力系统工程师', '储能系统集成', '逆变器/功率电子研发', '能源数字化开发'],
+  '能源/化工/环保': ['工艺工程师', 'DCS/过程控制研发', '化工安全工程师', '环保数据分析', '碳资产管理'],
   '医疗健康/生物医药': ['医疗大数据架构师', '医学影像AI算法', '健康中台研发', '信息系统工程师'],
+  '物流/供应链': ['供应链算法工程师', '仓储系统(WMS)研发', '路径规划/调度算法', '运输管理系统研发', '物流运营专家'],
+  '消费品/零售': ['零售数字化研发', '供应链计划专家', '会员/营销系统研发', '商品数据分析', '电商运营专家'],
+  '生活服务/文旅酒店': ['外卖调度系统研发', 'LBS/地图算法', '酒店/门票业务研发', '增长运营专家', '履约体验产品经理'],
+  '地产/建筑/智慧城市': ['智慧城市解决方案', 'BIM工程师', '地产数字化研发', '建筑结构设计师'],
+  '航空航天/国防': ['飞控算法工程师', '航空电子研发', '卫星测控/遥测', '仿真建模工程师', '信创系统研发'],
+  '政府/公共事业': ['政务系统研发', '信创适配工程师', '公共数据治理', '网络安全等保测评', '信息化专员'],
+  '法律/咨询/人力资源': ['法务合规顾问', '战略咨询顾问', 'HRBP', '法律科技产品研发', '薪酬绩效专家'],
+  '农业/食品科技': ['农业物联网研发', '食品研发工程师', '农产品供应链', '智慧养殖系统研发', '食品安全检测'],
   '通用行业': ['高级软件工程师', '技术负责人/Tech Lead', '系统架构师', '技术总监/VP']
 };
 
@@ -155,7 +162,7 @@ const INTERVIEW_TYPE_OPTIONS: Array<{
   {
     type: 'programmer',
     title: '程序员综合面',
-    subtitle: '项目经历 + 计算机基础轮转 + 代码题，经典大厂一二面全真流程',
+    subtitle: '项目经历 + 计算机基础轮转 + 代码题，经典大厂一二面完整流程',
     icon: Terminal,
     color: 'border-orange-500/50 bg-orange-950/20 text-orange-300',
   },
@@ -182,7 +189,7 @@ const INTERVIEW_TYPE_OPTIONS: Array<{
   },
   {
     type: 'english',
-    title: '全球英语全真面',
+    title: '全球英语面试',
     subtitle: '100% English Global Mock, FAANG style',
     icon: Globe,
     color: 'border-emerald-500/50 bg-emerald-950/20 text-emerald-300',
@@ -197,14 +204,13 @@ const INTERVIEW_TYPE_OPTIONS: Array<{
 ];
 
 export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoading }) => {
-  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // States
   const [resumeText, setResumeText] = useState(SAMPLE_RESUMES.backend);
   const [jdText, setJdText] = useState(SAMPLE_JDS.backend);
-  const [industry, setIndustry] = useState<IndustryType>('互联网/电商');
-  const [jobRole, setJobRole] = useState('资深后端开发');
+  const [industry, setIndustry] = useState<IndustryType>('人工智能/大模型');
+  const [jobRole, setJobRole] = useState('大模型算法工程师');
   const [seniority, setSeniority] = useState<SeniorityLevel>('senior');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('standard');
   const [interviewType, setInterviewType] = useState<InterviewType>('structured');
@@ -237,53 +243,29 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
 
   const customModel = loadLLMConfig()?.model;
 
-  // Fetch user's custom personas for the custom-interview lineup
+  // Fetch custom personas for the custom-interview lineup
   useEffect(() => {
-    const token = localStorage.getItem('interview_copilot_token');
-    if (!token) {
-      setMyPersonas([]);
-      return;
-    }
-    fetch('/api/v1/personas', { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/v1/personas')
       .then((res) => (res.ok ? res.json() : { personas: [] }))
       .then((data) => setMyPersonas(data.personas || []))
       .catch(() => setMyPersonas([]));
-  }, [user]);
+  }, []);
 
-  // Load user profile defaults when available
-  useEffect(() => {
-    if (user?.profile) {
-      if (user.profile.target_industry && INDUSTRY_OPTIONS.includes(user.profile.target_industry as any)) {
-        setIndustry(user.profile.target_industry as IndustryType);
-      }
-      if (user.profile.target_role) {
-        setJobRole(user.profile.target_role);
-      }
-      if (user.profile.target_level) {
-        setSeniority(user.profile.target_level as SeniorityLevel);
-      }
-    }
-  }, [user]);
-
-  // Load saved resumes if user is logged in
+  // Load saved resumes
   useEffect(() => {
     const fetchResumes = async () => {
-      const token = localStorage.getItem('interview_copilot_token');
-      if (!token) return;
       try {
-        const res = await fetch('/api/v1/profiles/resumes', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch('/api/v1/profiles/resumes');
         if (res.ok) {
           const data = await res.json();
           setUserResumes(data.resumes || []);
         }
       } catch (err) {
-        console.error('Failed to load user resumes:', err);
+        console.error('Failed to load saved resumes:', err);
       }
     };
     fetchResumes();
-  }, [user]);
+  }, []);
 
   // Handle English mode auto-switch
   useEffect(() => {
@@ -301,14 +283,9 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
     const formData = new FormData();
     formData.append('file', file);
 
-    const token = localStorage.getItem('interview_copilot_token');
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
     try {
       const res = await fetch('/api/v1/profiles/upload-resume', {
         method: 'POST',
-        headers,
         body: formData,
       });
 
@@ -380,10 +357,10 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
       <div className="text-center max-w-3xl mx-auto mb-8">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-900/30 border border-blue-700/40 text-blue-400 text-xs font-medium mb-3">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>全真智能模拟面试系统</span>
+          <span>智能模拟面试系统</span>
         </div>
         <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">
-          配置你的全真多 Agent 模拟面试
+          配置你的多 Agent 模拟面试
         </h1>
         <p className="mt-3 text-sm text-gray-400 leading-relaxed">
           支持上传真实简历文件、挑选行业与细分岗位、任选 7 大面试类型与多模态交互，全周期生成诊断报告与 7 天冲刺计划。
@@ -928,7 +905,7 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
               </>
             ) : (
               <>
-                <span>开启全真多 Agent 模拟面试</span>
+                <span>开启多 Agent 模拟面试</span>
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </>
             )}

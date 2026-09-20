@@ -8,11 +8,9 @@ import {
   Loader2,
   Sparkles,
   AlertTriangle,
-  LogIn,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import type { Persona } from '../types';
 
 const AVATAR_OPTIONS = ['🎭', '🔥', '🧠', '🎯', '⚡', '🦅', '💎', '🧙', '🕵️', '👨‍💻', '👩‍💻', '🧑‍🏫'];
@@ -42,7 +40,6 @@ interface PersonaFormState {
 }
 
 const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const { user, token } = useAuth();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,21 +50,11 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const authHeaders = useCallback((): Record<string, string> => {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return headers;
-  }, [token]);
-
   const fetchPersonas = useCallback(async () => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/personas', { headers: authHeaders() });
+      const res = await fetch('/api/v1/personas');
       if (!res.ok) throw new Error('角色列表加载失败');
       const data = await res.json();
       setPersonas(data.personas || []);
@@ -76,7 +63,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [token, authHeaders]);
+  }, []);
 
   useEffect(() => {
     fetchPersonas();
@@ -129,7 +116,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         editingId ? `/api/v1/personas/${editingId}` : '/api/v1/personas',
         {
           method: editingId ? 'PUT' : 'POST',
-          headers: authHeaders(),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         }
       );
@@ -152,7 +139,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     try {
       const res = await fetch(`/api/v1/personas/${id}`, {
         method: 'DELETE',
-        headers: authHeaders(),
+        headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) throw new Error('删除失败');
       setPersonas((prev) => prev.filter((p) => p.id !== id));
@@ -189,8 +176,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <button
             type="button"
             onClick={openCreate}
-            disabled={!user}
-            title={user ? '新建自定义面试官角色' : '请先登录'}
+            title="新建自定义面试官角色"
             className="flex items-center space-x-1.5 text-xs px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -200,13 +186,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       </div>
 
       {/* Body */}
-      {!user ? (
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-10 flex flex-col items-center text-center space-y-3">
-          <LogIn className="w-8 h-8 text-gray-500" />
-          <p className="text-sm text-gray-300 font-medium">登录后可创建和管理你的自定义面试官角色</p>
-          <p className="text-xs text-gray-500">点击右上角「登录 / 注册」即可开始</p>
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="py-20 flex flex-col items-center space-y-3 text-gray-400 text-xs">
           <Loader2 className="w-7 h-7 animate-spin text-violet-500" />
           <span>正在加载角色库...</span>

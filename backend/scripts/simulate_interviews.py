@@ -593,7 +593,6 @@ async def run_scenario(sc: dict, llm: ChatOpenAI, suffix: str, max_answers: int,
         state = await session_manager.create_session(
             resume_text=sc["resume_text"],
             jd_text=sc["jd_text"],
-            user_id="sim_runner",
             interview_type=sc["interview_type"],
             industry=sc["industry"],
             job_role=sc["job_role"],

@@ -93,7 +93,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
           <div>
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-900/40 border border-blue-700/50 text-blue-300 text-xs font-medium mb-2">
               <Award className="w-3.5 h-3.5 text-blue-400" />
-              <span>全真多 Agent 模拟面试诊断书</span>
+              <span>多 Agent 模拟面试诊断书</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
               模拟面试多维能力诊断报告
@@ -394,7 +394,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
           className="inline-flex items-center space-x-2 px-8 py-3.5 rounded-2xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-xs transition border border-gray-700"
         >
           <RotateCcw className="w-4 h-4" />
-          <span>返回控制台，开启新一轮全真模拟</span>
+          <span>返回控制台，开启新一轮模拟面试</span>
         </button>
       </div>
 
