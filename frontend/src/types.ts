@@ -335,3 +335,76 @@ export interface ComparisonResult {
   overall_improvement: number;
   summary: string;
 }
+
+// 全局主视图路由类型
+export type AppView =
+  | 'home'
+  | 'resumes'
+  | 'interviews'
+  | 'setup'
+  | 'interview'
+  | 'report'
+  | 'personas';
+
+// 简历相关数据类型
+export interface SavedResumeItem {
+  id: string;
+  filename: string;
+  created_at?: string;
+  parsed_profile?: any;
+  raw_text_preview: string;
+}
+
+export interface SavedResumeDetail {
+  id: string;
+  filename: string;
+  created_at?: string;
+  parsed_profile?: any;
+  raw_text: string;
+}
+
+// 真实面试日程状态与数据契约
+export type ScheduleStatus = 'upcoming' | 'completed' | 'passed' | 'failed' | 'cancelled';
+
+export interface InterviewScheduleItem {
+  id: string;
+  company: string;
+  job_role: string;
+  interview_round: string;
+  scheduled_at: string;
+  location_type: string; // online | offline | phone
+  meeting_link_or_address?: string;
+  status: ScheduleStatus;
+  jd_text?: string;
+  resume_id?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CreateScheduleRequest {
+  company: string;
+  job_role: string;
+  interview_round: string;
+  scheduled_at: string;
+  location_type: string;
+  meeting_link_or_address?: string;
+  status?: ScheduleStatus;
+  jd_text?: string;
+  resume_id?: string;
+  notes?: string;
+}
+
+export interface UpdateScheduleRequest {
+  company?: string;
+  job_role?: string;
+  interview_round?: string;
+  scheduled_at?: string;
+  location_type?: string;
+  meeting_link_or_address?: string;
+  status?: ScheduleStatus;
+  jd_text?: string;
+  resume_id?: string;
+  notes?: string;
+}
+

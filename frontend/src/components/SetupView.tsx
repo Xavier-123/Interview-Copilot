@@ -41,6 +41,14 @@ interface SetupViewProps {
     customPersonas?: PersonaDisplayInfo[];
   }) => void;
   isLoading: boolean;
+  prefillConfig?: {
+    resumeText?: string;
+    resumeTitle?: string;
+    jobRole?: string;
+    jdText?: string;
+    company?: string;
+    interviewRound?: string;
+  };
 }
 
 const SAMPLE_RESUMES = {
@@ -203,7 +211,11 @@ const INTERVIEW_TYPE_OPTIONS: Array<{
   },
 ];
 
-export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoading }) => {
+export const SetupView: React.FC<SetupViewProps> = ({
+  onStartInterview,
+  isLoading,
+  prefillConfig,
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // States
@@ -219,6 +231,22 @@ export const SetupView: React.FC<SetupViewProps> = ({ onStartInterview, isLoadin
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [searchConfigOpen, setSearchConfigOpen] = useState(false);
   const [hasLocalSearchKey, setHasLocalSearchKey] = useState(() => Boolean(loadSearchConfig()));
+
+  // 接收从简历管理或面试日程传来的预填信息
+  useEffect(() => {
+    if (prefillConfig?.resumeText) {
+      setResumeText(prefillConfig.resumeText);
+      if (prefillConfig.resumeTitle) {
+        setUploadSuccessName(prefillConfig.resumeTitle);
+      }
+    }
+    if (prefillConfig?.jdText) {
+      setJdText(prefillConfig.jdText);
+    }
+    if (prefillConfig?.jobRole) {
+      setJobRole(prefillConfig.jobRole);
+    }
+  }, [prefillConfig]);
 
   useEffect(() => {
     const refreshSearchConfig = () => setHasLocalSearchKey(Boolean(loadSearchConfig()));

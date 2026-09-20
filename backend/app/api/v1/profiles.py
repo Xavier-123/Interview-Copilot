@@ -118,3 +118,25 @@ async def get_saved_resumes(
             for r in resumes
         ]
     }
+
+
+@router.delete("/resumes/{resume_id}")
+async def delete_saved_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a saved resume and remove physical file if it exists."""
+    resume = await db.get(SavedResume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在或已被删除")
+
+    if resume.file_path and os.path.exists(resume.file_path):
+        try:
+            os.remove(resume.file_path)
+        except Exception:
+            pass
+
+    await db.delete(resume)
+    await db.commit()
+    return {"status": "success", "message": "简历已成功删除", "resume_id": resume_id}
+

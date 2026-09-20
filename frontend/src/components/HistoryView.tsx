@@ -16,11 +16,12 @@ import { ComparisonModal } from './ComparisonModal';
 import { TranscriptModal } from './TranscriptModal';
 
 interface HistoryViewProps {
-  onBack: () => void;
+  onBack?: () => void;
   onViewReport: (sessionId: string) => void;
+  hideBack?: boolean;
 }
 
-export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }) => {
+export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport, hideBack = false }) => {
   const [history, setHistory] = useState<HistorySessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
@@ -138,12 +139,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport }
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <button
-            onClick={onBack}
-            className="inline-flex items-center space-x-1.5 text-xs text-gray-400 hover:text-white mb-2 transition"
-          >
-            <span>← 返回模拟面试配置</span>
-          </button>
+          {!hideBack && onBack && (
+            <button
+              onClick={onBack}
+              className="inline-flex items-center space-x-1.5 text-xs text-gray-400 hover:text-white mb-2 transition cursor-pointer"
+            >
+              <span>← 返回模拟面试配置</span>
+            </button>
+          )}
           <h1 className="text-2xl font-bold text-white flex items-center space-x-2">
             <History className="w-6 h-6 text-blue-400" />
             <span>模拟面试历史档案与演进对比</span>

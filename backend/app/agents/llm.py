@@ -1,12 +1,81 @@
+import ipaddress
 import json
 import logging
 import re
+import socket
 from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _is_base_url_allowed(base_url: str) -> bool:
+    """客户端自定义 base_url 的 SSRF 防护校验。
+
+    规则：
+    - 仅接受 http/https 且带主机名；
+    - 命中服务端 allowlist（LLM_BASE_URL_ALLOWLIST，域名或域名后缀）直接放行，
+      供本地 Ollama / 内网自建网关等场景由运维显式开启；
+    - 其余主机解析出的所有 IP 必须都是公网地址：私有网段、回环、链路本地
+      （含云平台 metadata 169.254.169.254）、保留、组播地址一律拒绝；
+      198.18/15（RFC 2544 基准网段，Clash 等 fake-ip 代理 DNS 的惯用假 IP 池，
+      不承载任何真实服务或 metadata）视为无法判断而放行，避免误杀代理环境；
+    - 主机名解析失败时放行：请求本身也会失败，且避免代理/受限 DNS 环境误杀
+      公网端点；字面量内网 IP 不经过解析，仍会被上面一条拦住。
+    """
+    try:
+        parsed = urlparse(base_url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower()
+
+    allowlist = [h.strip().lower() for h in settings.LLM_BASE_URL_ALLOWLIST.split(",") if h.strip()]
+    if any(host == entry or host.endswith("." + entry) for entry in allowlist):
+        return True
+
+    if (
+        host == "localhost"
+        or host.endswith(".localhost")
+        or host.endswith(".internal")
+        or host.endswith(".local")
+    ):
+        return False
+
+    try:
+        addr_infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, OSError):
+        # 解析不出任何地址：后续请求自然失败，按放行处理（不误杀代理/受限 DNS 环境下的公网端点）
+        return True
+
+    # 100.64/10（运营商级 NAT，含阿里云 metadata 100.100.100.200）在部分
+    # Python 版本里不算 is_private；198.18/15 是 fake-ip 代理 DNS 的假 IP 池，
+    # 不承载真实服务，视为无法判断而非内网
+    SHARED_SPACE_V4 = ipaddress.ip_network("100.64.0.0/10")
+    FAKE_IP_V4 = ipaddress.ip_network("198.18.0.0/15")
+    for info in addr_infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if ip.version == 4 and ip in FAKE_IP_V4:
+            continue
+        in_shared_space = ip.version == 4 and ip in SHARED_SPACE_V4
+        if (
+            in_shared_space
+            or ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False
+    return True
 
 
 def _clean_llm_text(text: Any) -> Any:
@@ -51,6 +120,9 @@ class LLMService:
         model = str(llm_config.get("model") or settings.LLM_MODEL)
         api_key = str(llm_config.get("api_key")).strip()
         base_url = str(llm_config.get("base_url") or "").strip() or None
+        if base_url and not _is_base_url_allowed(base_url):
+            logger.warning(f"Rejected custom LLM base_url by SSRF protection: {base_url}")
+            return None
         try:
             temperature = float(llm_config.get("temperature", settings.LLM_TEMPERATURE))
         except (TypeError, ValueError):
