@@ -28,6 +28,10 @@ async def interview_websocket_endpoint(websocket: WebSocket, session_id: str):
         "stage": state.get("stage"),
         "current_interviewer": state.get("current_interviewer"),
         "messages": state.get("messages", []),
+        "turn_id": state.get("turn_id"),
+        "trace_id": state.get("trace_id"),
+        "question_intent": state.get("question_intent"),
+        "director_decision": state.get("director_decision"),
         "status": state.get("status")
     })
 
@@ -45,6 +49,10 @@ async def interview_websocket_endpoint(websocket: WebSocket, session_id: str):
                     "stage": new_state.get("stage"),
                     "current_interviewer": new_state.get("current_interviewer"),
                     "messages": new_state.get("messages", []),
+                    "turn_id": new_state.get("turn_id"),
+                    "trace_id": new_state.get("trace_id"),
+                    "question_intent": new_state.get("question_intent"),
+                    "director_decision": new_state.get("director_decision"),
                     "status": new_state.get("status")
                 })
 
@@ -63,6 +71,10 @@ async def interview_websocket_endpoint(websocket: WebSocket, session_id: str):
                     "current_interviewer": new_state.get("current_interviewer"),
                     "round_count": new_state.get("round_count"),
                     "messages": new_state.get("messages", []),
+                    "turn_id": new_state.get("turn_id"),
+                    "trace_id": new_state.get("trace_id"),
+                    "question_intent": new_state.get("question_intent"),
+                    "director_decision": new_state.get("director_decision"),
                     "latest_observation": latest_obs,
                     "status": new_state.get("status")
                 })

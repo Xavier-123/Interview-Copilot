@@ -136,6 +136,25 @@ export interface Message {
   stage?: string;
   timestamp?: string;
   search_metadata?: SearchMetadata;
+  turn_id?: string;
+  trace_id?: string;
+}
+
+export interface QuestionIntent {
+  goal?: string;
+  topic?: string | null;
+  action?: string;
+  difficulty?: string;
+  required_evidence?: string[];
+  question_count?: number;
+  interviewer?: string;
+}
+
+export interface DirectorDecision {
+  next_node?: string;
+  stage?: string;
+  reason?: string | null;
+  remaining_rounds?: number;
 }
 
 export interface TranscriptMessage {

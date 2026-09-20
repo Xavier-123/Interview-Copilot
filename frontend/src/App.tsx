@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { HomeView } from './components/HomeView';
 import { ResumeManagementView } from './components/ResumeManagementView';
@@ -34,6 +34,8 @@ export function App() {
   const [lifelinesUsed, setLifelinesUsed] = useState<number>(0);
   const [shadowLogsCount, setShadowLogsCount] = useState<number>(0);
   const [isThinking, setIsThinking] = useState<boolean>(false);
+  // 报告生成进行中标记（ref 同步读写，避免 React 批处理下读到 stale state 漏判）
+  const finishInFlightRef = useRef<boolean>(false);
   const [report, setReport] = useState<EvaluationReport | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(false);
@@ -157,7 +159,7 @@ export function App() {
 
   // 2. Submit Candidate Answer
   const handleSendMessage = async (text: string) => {
-    if (!sessionId || isThinking || status === 'paused') return;
+    if (!sessionId || isThinking || status === 'paused' || status === 'finished') return;
 
     const tempUserMsg: Message = {
       role: 'user',
@@ -187,7 +189,9 @@ export function App() {
       setShadowLogsCount((prev) => prev + 1);
 
       if (data.status === 'finished') {
-        handleFinishInterview();
+        // 等待报告生成完成后再解除 loading，否则 finally 会提前恢复输入框，
+        // 导致用户重复提交答案或重复触发报告请求
+        await handleFinishInterview();
       }
     } catch (error) {
       console.error('Failed to send answer:', error);
@@ -336,7 +340,8 @@ export function App() {
 
   // 8. Finish Interview & Generate Report
   const handleFinishInterview = async () => {
-    if (!sessionId) return;
+    if (!sessionId || finishInFlightRef.current) return;
+    finishInFlightRef.current = true;
     setIsThinking(true);
     try {
       const res = await fetch(`/api/v1/interviews/${sessionId}/finish`, {
@@ -351,6 +356,7 @@ export function App() {
       console.error('Failed to generate report:', error);
       alert('生成复盘报告失败，请重试。');
     } finally {
+      finishInFlightRef.current = false;
       setIsThinking(false);
     }
   };

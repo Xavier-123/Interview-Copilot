@@ -74,6 +74,15 @@ async def init_db():
             await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN company_scenario JSON"))
         except Exception:
             pass
+        for col, dtype in [
+            ("interviewer_id", "VARCHAR(64) DEFAULT 'orchestrator'"),
+            ("interviewer_version", "VARCHAR(64) DEFAULT 'legacy-v1'"),
+            ("trace_id", "VARCHAR(64)"),
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE interview_sessions ADD COLUMN {col} {dtype}"))
+            except Exception:
+                pass
         # 消息顺序号列：用于 interview_messages 增量同步与回滚（幂等迁移）
         try:
             await conn.execute(text("ALTER TABLE interview_messages ADD COLUMN seq INTEGER"))

@@ -169,7 +169,8 @@ class InterviewerAuditService:
     async def audit_session(
         self,
         state: InterviewState,
-        db: Optional[AsyncSession] = None
+        db: Optional[AsyncSession] = None,
+        persist: bool = True,
     ) -> Dict[str, Any]:
         """对一场已结束的面试进行面试官表现质检与自省复盘。"""
         messages = state.get("messages", [])
@@ -252,16 +253,24 @@ class InterviewerAuditService:
                 ]
             }
 
-        # 异步持久化沉淀到经验库（按角色精准归因，Fallback 时自动跳过防污染）
-        await self._persist_audit_evolution(
-            audit_result=audit_result,
-            assistant_messages=assistant_msgs,
-            valid_keys=participating_keys,
-            key_to_name=roster_map,
-            default_role=interviewer_role,
-            is_fallback=is_fallback,
-            db=db
-        )
+        if is_fallback:
+            # Keep fallback reports usable for the user, but never promote
+            # hard-coded content into an evolution review queue.
+            audit_result["promotion_eligible"] = False
+
+        # Production sessions use persist=False and create a reviewable
+        # EvolutionCandidate instead. Direct callers and offline tooling keep
+        # the historical persist=True behavior for compatibility.
+        if persist:
+            await self._persist_audit_evolution(
+                audit_result=audit_result,
+                assistant_messages=assistant_msgs,
+                valid_keys=participating_keys,
+                key_to_name=roster_map,
+                default_role=interviewer_role,
+                is_fallback=is_fallback,
+                db=db
+            )
         return audit_result
 
     async def _persist_audit_evolution(

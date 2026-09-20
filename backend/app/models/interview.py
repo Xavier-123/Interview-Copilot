@@ -24,6 +24,9 @@ class InterviewSessionModel(Base):
     candidate_profile = Column(JSON, default=dict)
     jd_requirements = Column(JSON, default=dict)
     company_scenario = Column(JSON, default=dict)  # 目标企业/业务线场景卡片
+    interviewer_id = Column(String(64), default="orchestrator")
+    interviewer_version = Column(String(64), default="legacy-v1")
+    trace_id = Column(String(64), nullable=True)
     interview_state = Column(JSON, default=dict)  # Full LangGraph state snapshot
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

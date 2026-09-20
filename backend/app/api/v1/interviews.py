@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from app.services.session_manager import session_manager
+from app.services.memory import memory_gateway
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
@@ -38,6 +39,9 @@ class PauseRequest(BaseModel):
 
 class ToggleWebSearchRequest(BaseModel):
     enabled: Optional[bool] = None
+
+class MemoryConsentRequest(BaseModel):
+    enabled: bool = False
 
 class CompareRequest(BaseModel):
     session_id_1: str
@@ -95,6 +99,10 @@ async def start_interview(session_id: str):
             "stage": new_state.get("stage"),
             "current_interviewer": new_state.get("current_interviewer"),
             "messages": new_state.get("messages", []),
+            "turn_id": new_state.get("turn_id"),
+            "trace_id": new_state.get("trace_id"),
+            "question_intent": new_state.get("question_intent"),
+            "director_decision": new_state.get("director_decision"),
             "status": new_state.get("status")
         }
     except ValueError as ve:
@@ -117,6 +125,10 @@ async def submit_answer(session_id: str, req: AnswerRequest):
             "current_interviewer": new_state.get("current_interviewer"),
             "round_count": new_state.get("round_count"),
             "messages": new_state.get("messages", []),
+            "turn_id": new_state.get("turn_id"),
+            "trace_id": new_state.get("trace_id"),
+            "question_intent": new_state.get("question_intent"),
+            "director_decision": new_state.get("director_decision"),
             "status": new_state.get("status")
         }
     except ValueError as ve:
@@ -210,6 +222,38 @@ async def toggle_web_search(session_id: str, req: Optional[ToggleWebSearchReques
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{session_id}/memory-consent")
+async def set_memory_consent(session_id: str, req: MemoryConsentRequest):
+    """Explicitly enable or disable candidate long-term memory writes."""
+    try:
+        return await session_manager.set_memory_consent(session_id, req.enabled)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{session_id}/memory")
+async def list_session_memory(session_id: str):
+    """List explicitly consented candidate memories for the local user."""
+    state = await session_manager._ensure_state(session_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "session_id": session_id,
+        "memory_consent": bool(state.get("memory_consent", False)),
+        "memories": await memory_gateway.list_candidate_memories("local-user"),
+    }
+
+@router.post("/evolution/candidates/{candidate_id}/approve")
+async def approve_evolution_candidate(candidate_id: str):
+    """Approve a reviewable interviewer evolution candidate."""
+    try:
+        return await session_manager.approve_evolution_candidate(candidate_id)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -320,5 +364,6 @@ async def get_session_audit(session_id: str):
     audit = report.get("interviewer_audit")
     if not audit:
         from app.services.audit import audit_service
-        audit = await audit_service.audit_session(state)
+        # Read-only audit endpoint must not activate interviewer memories.
+        audit = await audit_service.audit_session(state, persist=False)
     return {"session_id": session_id, "interviewer_audit": audit}

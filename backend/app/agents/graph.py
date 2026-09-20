@@ -15,6 +15,8 @@ from app.agents.challenger import challenger_node
 from app.agents.management import management_node
 from app.agents.persona_node import persona_node, resolve_custom_role, is_persona_key
 from app.agents.observer import shadow_observer_node
+from app.agents.planner import build_question_intent, build_director_decision
+from app.agents.speaker import speaker_node
 
 CUSTOM_INTERVIEWER_NODES = ("technical", "programmer", "hr", "challenger", "management")
 
@@ -64,7 +66,14 @@ def after_observer_route(state: InterviewState) -> str:
     if interview_type == "custom":
         if round_count >= (max_rounds - 1):
             return "orchestrator_to_qa"
-        next_role = resolve_custom_role(state) or "technical"
+        # Challenger is an injected stress turn and intentionally does not
+        # consume the normal round counter. Advance the custom lineup by one
+        # in that case so a challenger cannot route to itself forever.
+        custom_state = state
+        if state.get("current_interviewer") == "challenger":
+            custom_state = dict(state)
+            custom_state["round_count"] = round_count + 1
+        next_role = resolve_custom_role(custom_state) or "technical"
         if is_persona_key(next_role):
             return "custom_persona"
         if next_role in CUSTOM_INTERVIEWER_NODES:
@@ -138,6 +147,8 @@ def build_interview_graph():
     graph.add_node("management", management_node)
     graph.add_node("custom_persona", persona_node)
     graph.add_node("shadow_observer", shadow_observer_node)
+    graph.add_node("question_planner", question_planner_node)
+    graph.add_node("speaker", speaker_node)
 
     # Transitions
     graph.add_edge("orchestrator_to_technical", "technical")
@@ -154,16 +165,22 @@ def build_interview_graph():
     graph.add_edge("management", END)
     graph.add_edge("custom_persona", END)
 
+    # Observer produces evidence; the Director chooses a legal next node, the
+    # Planner turns that decision into structured intent, and Speaker is the
+    # only output boundary for the next interviewer message.
+    graph.add_edge("question_planner", "speaker")
+    graph.add_edge("speaker", END)
+
     # Observer routes dynamically
     graph.add_conditional_edges("shadow_observer", after_observer_route, {
-        "technical": "technical",
-        "programmer": "programmer",
-        "orchestrator_to_hr": "orchestrator_to_hr",
-        "hr": "hr",
-        "orchestrator_to_qa": "orchestrator_to_qa",
-        "challenger": "challenger",
-        "management": "management",
-        "custom_persona": "custom_persona"
+        "technical": "question_planner",
+        "programmer": "question_planner",
+        "orchestrator_to_hr": "question_planner",
+        "hr": "question_planner",
+        "orchestrator_to_qa": "question_planner",
+        "challenger": "question_planner",
+        "management": "question_planner",
+        "custom_persona": "question_planner"
     })
 
     # Entry point
@@ -181,5 +198,17 @@ def build_interview_graph():
     })
 
     return graph.compile()
+
+
+async def question_planner_node(state: InterviewState) -> dict:
+    """Compile the Director's route into a validated, inspectable intent."""
+    next_node = after_observer_route(state)
+    intent = build_question_intent(state, next_node)
+    return {
+        "question_intent": intent,
+        "director_decision": build_director_decision(state, next_node),
+        "next_interviewer": next_node,
+        "next_node": next_node,
+    }
 
 interview_app = build_interview_graph()

@@ -9,6 +9,25 @@ class MessageItem(TypedDict):
     stage: Optional[str]
     timestamp: Optional[str]
     search_metadata: Optional[Dict[str, Any]]
+    turn_id: Optional[str]
+    trace_id: Optional[str]
+
+
+class QuestionIntent(TypedDict, total=False):
+    goal: str
+    topic: Optional[str]
+    action: str
+    difficulty: str
+    required_evidence: List[str]
+    question_count: int
+    interviewer: str
+
+
+class DirectorDecision(TypedDict, total=False):
+    next_node: str
+    stage: str
+    reason: Optional[str]
+    remaining_rounds: int
 
 class ShadowObservation(TypedDict):
     round_index: int
@@ -93,6 +112,20 @@ class InterviewStateBase(TypedDict):
 class InterviewStateOptional(TypedDict, total=False):
     # Optional overrides
     llm_config: Optional[Dict[str, Any]]  # frontend-provided LLM config
+    # Runtime trace and structured orchestration metadata. Optional for
+    # backwards compatibility with persisted states created before the upgrade.
+    turn_id: str
+    trace_id: str
+    interviewer_id: str
+    interviewer_version: str
+    question_intent: QuestionIntent
+    director_decision: DirectorDecision
+    evidence_refs: List[str]
+    evidence_turn_ids: List[str]
+    authorized_memory_refs: List[str]
+    memory_consent: bool
+    turn_deadline: Optional[str]
+    next_node: str
 
 
 class InterviewState(InterviewStateBase, InterviewStateOptional):

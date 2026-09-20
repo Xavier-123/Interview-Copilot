@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import uuid
 import json
 import logging
@@ -9,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.models.db import AsyncSessionLocal
 from app.models.interview import InterviewSessionModel, InterviewMessageModel, InterviewReportModel
+from app.models.architecture import EvolutionCandidateModel
 from app.models.persona import InterviewerPersona
 from app.agents.state import InterviewState
 from app.agents.graph import interview_app
@@ -20,6 +22,7 @@ from app.services.parser import parser_service
 from app.services.search import search_service
 from app.services.scenario_service import scenario_service
 from app.services.audit import audit_service
+from app.services.memory import memory_gateway
 from app.agents.persona_presets import PERSONA_PRESETS
 
 logger = logging.getLogger(__name__)
@@ -47,6 +50,35 @@ INTERVIEWER_LABELS = {
     "candidate": "候选人",
 }
 
+# 每轮作答会被图节点改写的"考官决策"字段：提交前快照，redo 回滚时恢复，
+# 否则重答同一题时影子观察员/面试官会沿用上一轮回答留下的判断。
+_TURN_TRACKED_FIELDS = (
+    "stage",                    # 过渡节点（如 orchestrator_to_hr）与提问在同一次调用里推进
+    "current_interviewer",
+    "next_interviewer",
+    "round_count",
+    "stress_triggered",         # challenger 节点置 True
+    "current_topic",
+    "topic_depth",
+    "last_satisfaction_score",
+    "last_answer_status",
+    "dig_action",
+    "switch_reason",
+    "next_topic_hint",
+    "follow_up_hint",
+    "break_routine_hint",
+    "condensed_memory",         # 观察员每轮滚动追加
+    "evaluation_logs",
+    "question_intent",
+    "director_decision",
+    "evidence_refs",
+    "evidence_turn_ids",
+    "next_node",
+)
+
+# 保留的快照数量（支持连续多次 redo），随 interview_state 一起持久化
+MAX_TURN_SNAPSHOTS = 3
+
 class SessionManager:
     def __init__(self):
         # In-memory cache for ultra-fast access, backed by SQLite DB
@@ -57,6 +89,7 @@ class SessionManager:
         # by the session/transcript APIs.
         self._llm_configs: Dict[str, Dict[str, Any]] = {}
         self._finish_locks: Dict[str, asyncio.Lock] = {}
+        self._turn_locks: Dict[str, asyncio.Lock] = {}
 
     def _finish_lock(self, session_id: str) -> asyncio.Lock:
         lock = self._finish_locks.get(session_id)
@@ -65,9 +98,18 @@ class SessionManager:
             self._finish_locks[session_id] = lock
         return lock
 
+    def _turn_lock(self, session_id: str) -> asyncio.Lock:
+        lock = self._turn_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._turn_locks[session_id] = lock
+        return lock
+
     def _runtime_state(self, session_id: str, state: InterviewState) -> InterviewState:
         """Return a transient graph input containing the session's private LLM config."""
         runtime_state = dict(state)
+        # turn_snapshots 是 redo 用的快照，不是图 schema 通道，不传入图
+        runtime_state.pop("turn_snapshots", None)
         llm_config = self._llm_configs.get(session_id)
         if llm_config:
             runtime_state["llm_config"] = llm_config
@@ -168,6 +210,22 @@ class SessionManager:
             "evaluation_logs": [],
             "status": "ready"
         }
+        # Trace metadata is persisted with the session so a resumed interview
+        # remains diagnosable across process restarts.
+        initial_state.update({
+            "turn_id": str(uuid.uuid4()),
+            "trace_id": str(uuid.uuid4()),
+            "interviewer_id": "orchestrator",
+            "interviewer_version": "legacy-v1",
+            "question_intent": {},
+            "director_decision": {},
+            "evidence_refs": [],
+            "evidence_turn_ids": [],
+            "authorized_memory_refs": [],
+            "memory_consent": False,
+            "turn_deadline": None,
+            "next_node": "orchestrator_welcome",
+        })
         self._sessions[session_id] = initial_state
         if llm_config:
             # Keep the config available to the graph for this process only.
@@ -192,6 +250,9 @@ class SessionManager:
                     elapsed_seconds=0,
                     web_search_enabled=web_search_enabled,
                     company_scenario=company_scenario,
+                    interviewer_id=initial_state["interviewer_id"],
+                    interviewer_version=initial_state["interviewer_version"],
+                    trace_id=initial_state["trace_id"],
                     candidate_profile=candidate_profile,
                     jd_requirements=jd_requirements,
                     interview_state=self._strip_private_state(initial_state)
@@ -294,6 +355,9 @@ class SessionManager:
         runtime_state = self._runtime_state(session_id, state)
         new_state = await interview_app.ainvoke(runtime_state)
         new_state = self._strip_private_state(new_state) or state
+        # 图输出不含 turn_snapshots（非 schema 通道），重新挂回以供 redo 使用
+        new_state["turn_snapshots"] = state.get("turn_snapshots", [])
+        self._annotate_turn_messages(new_state)
         self._sessions[session_id] = new_state
 
         await self._sync_state_to_db(session_id, new_state)
@@ -305,9 +369,28 @@ class SessionManager:
         user_message: str,
         search_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        # REST and WebSocket can target the same session concurrently. Serialize
+        # the full read -> graph invoke -> persist sequence per session.
+        async with self._turn_lock(session_id):
+            return await self._submit_candidate_answer_unlocked(
+                session_id, user_message, search_config
+            )
+
+    async def _submit_candidate_answer_unlocked(
+        self,
+        session_id: str,
+        user_message: str,
+        search_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         state = await self._ensure_state(session_id)
         if not state:
             raise ValueError(f"Session {session_id} not found")
+
+        # 在本轮改写状态前，快照"考官决策"字段，供 redo_turn 回滚恢复
+        snapshot = {field: copy.deepcopy(state.get(field)) for field in _TURN_TRACKED_FIELDS}
+        snapshots = list(state.get("turn_snapshots") or [])
+        snapshots.append(snapshot)
+        snapshots = snapshots[-MAX_TURN_SNAPSHOTS:]
 
         # Record candidate answer
         user_msg = {
@@ -319,6 +402,8 @@ class SessionManager:
         }
 
         state["latest_user_input"] = user_message
+        state["turn_id"] = str(uuid.uuid4())
+        state["trace_id"] = str(uuid.uuid4())
         state["messages"] = state.get("messages", []) + [user_msg]
         state["status"] = "in_progress"
 
@@ -330,10 +415,54 @@ class SessionManager:
         runtime_state = self._runtime_state(session_id, state)
         new_state = await interview_app.ainvoke(runtime_state, config=run_config)
         new_state = self._strip_private_state(new_state) or state
+        # 图输出不含 turn_snapshots（非 schema 通道），挂回本轮快照以供 redo 使用
+        new_state["turn_snapshots"] = snapshots
+        self._annotate_turn_messages(new_state)
+        await self._persist_latest_evidence(new_state)
         self._sessions[session_id] = new_state
 
         await self._sync_state_to_db(session_id, new_state)
         return new_state
+
+    @staticmethod
+    def _annotate_turn_messages(state: InterviewState) -> None:
+        """Attach trace metadata to newly generated messages without changing
+        the legacy message shape consumed by the frontend."""
+        turn_id = state.get("turn_id")
+        trace_id = state.get("trace_id")
+        for message in state.get("messages", [])[-3:]:
+            if isinstance(message, dict):
+                message.setdefault("turn_id", turn_id)
+                message.setdefault("trace_id", trace_id)
+
+    async def _persist_latest_evidence(self, state: InterviewState) -> None:
+        logs = state.get("evaluation_logs") or []
+        if not logs:
+            return
+        latest = logs[-1]
+        if not isinstance(latest, dict):
+            return
+        existing = list(state.get("evidence_refs") or [])
+        existing_turns = list(state.get("evidence_turn_ids") or [])
+        # The graph is invoked once per candidate answer, so the latest log is
+        # the only new evidence item in this call. Avoid duplicate inserts on
+        # retries by using the current turn id as the dedupe marker in state.
+        turn_id = state.get("turn_id")
+        if turn_id and turn_id in existing_turns:
+            return
+        try:
+            evidence_id = await memory_gateway.write_evidence(
+                session_id=state.get("session_id", ""),
+                turn_id=state.get("turn_id"),
+                observation=latest,
+            )
+            existing.append(evidence_id)
+            state["evidence_refs"] = existing
+            if turn_id:
+                existing_turns.append(turn_id)
+                state["evidence_turn_ids"] = existing_turns
+        except Exception as exc:
+            logger.warning("Failed to persist evidence: %s", exc)
 
     async def pause_session(self, session_id: str, elapsed_seconds: int = 0) -> Dict[str, Any]:
         """Pause interview session and freeze state."""
@@ -382,6 +511,11 @@ class SessionManager:
         """
         Redo current turn: rolls back the last candidate answer and last interviewer follow-up,
         so candidate can answer the current question again.
+
+        除了回滚消息/轮次/评估日志，还会恢复本轮作答前快照的考官决策状态
+        （current_topic / topic_depth / dig_action / condensed_memory / follow_up_hint /
+        stress_triggered / stage 等），保证重答与首次作答处于同一决策起点，
+        影子观察员不会沿用上一轮回答留下的判断。
         """
         state = await self._ensure_state(session_id)
         if not state:
@@ -393,13 +527,22 @@ class SessionManager:
             msgs.pop()
             msgs.pop()
             state["messages"] = msgs
-            state["round_count"] = max(0, state.get("round_count", 1) - 1)
 
             logs = list(state.get("evaluation_logs", []))
             if logs:
                 logs.pop()
                 state["evaluation_logs"] = logs
 
+            # 恢复本轮作答前的决策快照；旧会话无快照时仅回退轮次（保持向后兼容）
+            snapshots = list(state.get("turn_snapshots") or [])
+            if snapshots:
+                state["turn_snapshots"] = snapshots[:-1]
+                state.update(snapshots[-1])
+            else:
+                state["round_count"] = max(0, state.get("round_count", 1) - 1)
+
+            # 清空残留回答，避免图再次被调用时影子观察员误判旧答案
+            state["latest_user_input"] = None
             state["status"] = "waiting_user"
             self._sessions[session_id] = state
             await self._sync_state_to_db(session_id, state)
@@ -422,6 +565,25 @@ class SessionManager:
         state["lifelines_used"] = 0
         state["status"] = "ready"
         state["stress_triggered"] = False
+        # 重置考点追踪决策字段，否则新一轮会沿用上一场的追问判断
+        state["current_topic"] = None
+        state["topic_depth"] = 0
+        state["last_satisfaction_score"] = 0.0
+        state["last_answer_status"] = "unknown"
+        state["dig_action"] = "INIT"
+        state["switch_reason"] = None
+        state["next_topic_hint"] = None
+        state["follow_up_hint"] = None
+        state["break_routine_hint"] = None
+        state["latest_user_input"] = None
+        state["turn_id"] = str(uuid.uuid4())
+        state["trace_id"] = str(uuid.uuid4())
+        state["question_intent"] = {}
+        state["director_decision"] = {}
+        state["evidence_refs"] = []
+        state["evidence_turn_ids"] = []
+        state["memory_consent"] = False
+        state["turn_snapshots"] = []
 
         self._sessions[session_id] = state
 
@@ -505,8 +667,11 @@ class SessionManager:
 
             # 触发面试官表现质检与自我进化闭环（沉淀黄金案例与避坑经验）
             try:
-                audit_result = await audit_service.audit_session(runtime_state)
+                audit_result = await audit_service.audit_session(runtime_state, persist=False)
                 report["interviewer_audit"] = audit_result
+                candidate_id = await self._create_evolution_candidate(runtime_state, audit_result)
+                if candidate_id:
+                    report["evolution_candidate_id"] = candidate_id
             except Exception as e:
                 logger.warning(f"Self-evolution audit failed: {e}")
 
@@ -540,6 +705,73 @@ class SessionManager:
                 logger.error(f"Failed to persist report to DB: {e}")
 
             return report
+
+    async def _create_evolution_candidate(
+        self,
+        state: InterviewState,
+        audit_result: Dict[str, Any],
+    ) -> Optional[str]:
+        """Store an auditable evolution proposal without activating it."""
+        if not isinstance(audit_result, dict):
+            return None
+        if audit_result.get("promotion_eligible") is False:
+            return None
+        participating_keys = list(dict.fromkeys(
+            m.get("name")
+            for m in state.get("messages", [])
+            if isinstance(m, dict)
+            and m.get("role") == "assistant"
+            and m.get("name")
+            and m.get("name") != "orchestrator"
+        ))
+        candidate_id = str(uuid.uuid4())
+        payload = {
+            "audit": audit_result,
+            "interviewer_keys": participating_keys,
+            "source_session_id": state.get("session_id"),
+            "source_trace_id": state.get("trace_id"),
+        }
+        try:
+            async with AsyncSessionLocal() as db:
+                db.add(EvolutionCandidateModel(
+                    id=candidate_id,
+                    base_version_id=state.get("interviewer_version", "legacy-v1"),
+                    status="review_required",
+                    candidate_spec=payload,
+                    replay_metrics={},
+                    review_notes="等待离线回放与人工审批",
+                ))
+                await db.commit()
+            return candidate_id
+        except Exception as e:
+            logger.warning(f"Failed to persist evolution candidate: {e}")
+            return None
+
+    async def approve_evolution_candidate(self, candidate_id: str) -> Dict[str, Any]:
+        """Approve a reviewable candidate and activate its learned memories."""
+        async with AsyncSessionLocal() as db:
+            candidate = await db.get(EvolutionCandidateModel, candidate_id)
+            if not candidate:
+                raise ValueError("Evolution candidate not found")
+            if candidate.status != "review_required":
+                raise ValueError(f"Candidate status is {candidate.status}")
+
+            payload = candidate.candidate_spec or {}
+            audit_result = payload.get("audit") or {}
+            valid_keys = payload.get("interviewer_keys") or ["technical"]
+            await audit_service._persist_audit_evolution(
+                audit_result=audit_result,
+                assistant_messages=[],
+                valid_keys=valid_keys,
+                key_to_name={},
+                default_role=valid_keys[0],
+                is_fallback=False,
+                db=db,
+            )
+            candidate.status = "approved"
+            candidate.review_notes = "人工审批通过，经验已激活"
+            await db.commit()
+            return {"candidate_id": candidate_id, "status": candidate.status}
 
     async def get_history(self) -> List[Dict[str, Any]]:
         """Get history list of all interview sessions (local single-user mode)."""
@@ -944,6 +1176,9 @@ class SessionManager:
                 if record:
                     record.status = state.get("status", "in_progress")
                     record.round_count = state.get("round_count", 0)
+                    record.interviewer_id = state.get("interviewer_id", "orchestrator")
+                    record.interviewer_version = state.get("interviewer_version", "legacy-v1")
+                    record.trace_id = state.get("trace_id")
                     record.interview_state = self._strip_private_state(state)
 
                     # 全量增量同步消息（user + assistant 都落库，支持 redo/restart 回滚）
@@ -1105,5 +1340,15 @@ class SessionManager:
             "session_id": session_id,
             "web_search_enabled": new_val
         }
+
+    async def set_memory_consent(self, session_id: str, enabled: bool) -> dict:
+        """Set explicit consent for candidate long-term memory writes."""
+        state = await self._ensure_state(session_id)
+        if not state:
+            raise ValueError(f"Session {session_id} not found")
+        state["memory_consent"] = bool(enabled)
+        self._sessions[session_id] = state
+        await self._sync_state_to_db(session_id, state)
+        return {"session_id": session_id, "memory_consent": bool(enabled)}
 
 session_manager = SessionManager()
