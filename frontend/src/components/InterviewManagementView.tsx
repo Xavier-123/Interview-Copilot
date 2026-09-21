@@ -21,6 +21,8 @@ import {
   Loader2,
   X,
   Phone,
+  Banknote,
+  Handshake,
 } from 'lucide-react';
 import type {
   InterviewScheduleItem,
@@ -60,6 +62,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   const [formScheduledAt, setFormScheduledAt] = useState('');
   const [formLocationType, setFormLocationType] = useState('online');
   const [formMeetingLink, setFormMeetingLink] = useState('');
+  const [formSalary, setFormSalary] = useState('');
   const [formStatus, setFormStatus] = useState<ScheduleStatus>('upcoming');
   const [formJdText, setFormJdText] = useState('');
   const [formNotes, setFormNotes] = useState('');
@@ -101,6 +104,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
     setFormScheduledAt(localISOTime);
     setFormLocationType('online');
     setFormMeetingLink('');
+    setFormSalary('');
     setFormStatus('upcoming');
     setFormJdText('');
     setFormNotes('');
@@ -125,6 +129,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
     }
     setFormLocationType(s.location_type || 'online');
     setFormMeetingLink(s.meeting_link_or_address || '');
+    setFormSalary(s.salary || '');
     setFormStatus(s.status || 'upcoming');
     setFormJdText(s.jd_text || '');
     setFormNotes(s.notes || '');
@@ -150,6 +155,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
       scheduled_at: new Date(formScheduledAt).toISOString(),
       location_type: formLocationType,
       meeting_link_or_address: formMeetingLink.trim() || undefined,
+      salary: formSalary.trim() || undefined,
       status: formStatus,
       jd_text: formJdText.trim() || undefined,
       notes: formNotes.trim() || undefined,
@@ -248,6 +254,13 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
             <span>已通过 / Offer</span>
           </span>
         );
+      case 'declined':
+        return (
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-violet-950/70 border border-violet-700/60 text-violet-300">
+            <Handshake className="w-3 h-3 text-violet-400" />
+            <span>已婉拒</span>
+          </span>
+        );
       case 'failed':
         return (
           <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-950/70 border border-red-700/60 text-red-300">
@@ -321,6 +334,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   const countUpcoming = schedules.filter((s) => s.status === 'upcoming').length;
   const countCompleted = schedules.filter((s) => s.status === 'completed').length;
   const countPassed = schedules.filter((s) => s.status === 'passed').length;
+  const countDeclined = schedules.filter((s) => s.status === 'declined').length;
   const countFailed = schedules.filter((s) => s.status === 'failed').length;
 
   return (
@@ -425,6 +439,16 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                 }`}
               >
                 已通过 ({countPassed})
+              </button>
+              <button
+                onClick={() => setFilterStatus('declined')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  filterStatus === 'declined'
+                    ? 'bg-violet-950/80 text-violet-200 border border-violet-600/60'
+                    : 'bg-gray-900/60 text-gray-400 hover:text-white border border-gray-800/80'
+                }`}
+              >
+                已婉拒 ({countDeclined})
               </button>
               <button
                 onClick={() => setFilterStatus('failed')}
@@ -558,6 +582,16 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                         </span>
                       </div>
 
+                      {/* Offer 薪资（谈薪阶段） */}
+                      {schedule.salary && (
+                        <div className="flex items-center space-x-2 text-xs text-gray-300">
+                          <Banknote className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>
+                            Offer 薪资：<span className="text-emerald-300 font-medium">{schedule.salary}</span>
+                          </span>
+                        </div>
+                      )}
+
                       {/* Notes / 面经备忘 */}
                       {schedule.notes && (
                         <div className="p-2.5 rounded-lg bg-gray-950 border border-gray-800/80 text-xs text-gray-300 leading-relaxed">
@@ -619,6 +653,14 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                             >
                               未通过
                             </button>
+                            {schedule.interview_round === '谈薪' && (
+                              <button
+                                onClick={(e) => handleQuickStatusChange(schedule.id, 'declined', e)}
+                                className="px-2 py-1 rounded bg-violet-950/60 hover:bg-violet-900 border border-violet-800/50 text-violet-300 text-xs transition cursor-pointer"
+                              >
+                                婉拒 Offer
+                              </button>
+                            )}
                           </>
                         )}
 
@@ -739,6 +781,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                     <option value="业务终面">业务终面</option>
                     <option value="HR综合面">HR综合面</option>
                     <option value="CTO/高管面">CTO/高管面</option>
+                    <option value="谈薪">谈薪（Offer 沟通）</option>
                   </select>
                 </div>
 
@@ -753,6 +796,21 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                   />
                 </div>
               </div>
+
+              {formRound === '谈薪' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Offer 薪资
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="自由填写，例如：25k × 15 / 年包 40w / 28 × 16 + 期权"
+                    value={formSalary}
+                    onChange={(e) => setFormSalary(e.target.value)}
+                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -782,6 +840,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                     <option value="upcoming">待面试 (Upcoming)</option>
                     <option value="completed">已完成 (Completed)</option>
                     <option value="passed">已通过 (Passed / Offer)</option>
+                    <option value="declined">已婉拒 (Declined)</option>
                     <option value="failed">未通过 (Failed)</option>
                     <option value="cancelled">已取消 (Cancelled)</option>
                   </select>

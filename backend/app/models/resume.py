@@ -14,3 +14,4 @@ class SavedResume(Base):
     raw_text = Column(Text, nullable=False)
     parsed_profile = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

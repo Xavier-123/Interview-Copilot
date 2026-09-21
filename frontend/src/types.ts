@@ -366,11 +366,30 @@ export type AppView =
   | 'personas';
 
 // 简历相关数据类型
+export interface ResumeProfileProject {
+  name?: string;
+  role?: string;
+  tech_stack?: string[];
+  highlights?: string;
+}
+
+// AI 解析出的候选人结构化画像（LLM 输出可能存在字段漂移，索引签名兜底）
+export interface ResumeProfile {
+  name?: string;
+  experience_years?: number;
+  skills?: string[];
+  projects?: ResumeProfileProject[];
+  education?: string;
+  summary_profile?: string;
+  [key: string]: any;
+}
+
 export interface SavedResumeItem {
   id: string;
   filename: string;
   created_at?: string;
-  parsed_profile?: any;
+  updated_at?: string;
+  parsed_profile?: ResumeProfile;
   raw_text_preview: string;
 }
 
@@ -378,12 +397,13 @@ export interface SavedResumeDetail {
   id: string;
   filename: string;
   created_at?: string;
-  parsed_profile?: any;
+  updated_at?: string;
+  parsed_profile?: ResumeProfile;
   raw_text: string;
 }
 
 // 真实面试日程状态与数据契约
-export type ScheduleStatus = 'upcoming' | 'completed' | 'passed' | 'failed' | 'cancelled';
+export type ScheduleStatus = 'upcoming' | 'completed' | 'passed' | 'declined' | 'failed' | 'cancelled';
 
 export interface InterviewScheduleItem {
   id: string;
@@ -393,6 +413,7 @@ export interface InterviewScheduleItem {
   scheduled_at: string;
   location_type: string; // online | offline | phone
   meeting_link_or_address?: string;
+  salary?: string; // 谈薪阶段的 Offer 薪资（自由文本）
   status: ScheduleStatus;
   jd_text?: string;
   resume_id?: string;
@@ -408,6 +429,7 @@ export interface CreateScheduleRequest {
   scheduled_at: string;
   location_type: string;
   meeting_link_or_address?: string;
+  salary?: string;
   status?: ScheduleStatus;
   jd_text?: string;
   resume_id?: string;
@@ -421,6 +443,7 @@ export interface UpdateScheduleRequest {
   scheduled_at?: string;
   location_type?: string;
   meeting_link_or_address?: string;
+  salary?: string;
   status?: ScheduleStatus;
   jd_text?: string;
   resume_id?: string;

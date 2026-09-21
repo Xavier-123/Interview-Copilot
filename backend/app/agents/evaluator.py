@@ -4,7 +4,6 @@ from typing import Dict, Any, List
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import InterviewState
 from app.agents.prompts import (
-    REPORT_GENERATOR_PROMPT,
     EVALUATOR_AGENT_PROMPT,
     COACH_AGENT_PROMPT,
 )

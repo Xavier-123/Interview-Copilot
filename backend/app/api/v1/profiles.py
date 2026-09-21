@@ -1,5 +1,6 @@
 import os
 import uuid
+from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -16,6 +17,23 @@ class ParseResumeRequest(BaseModel):
 
 class ParseJDRequest(BaseModel):
     jd_text: str
+
+class ResumeUpdateRequest(BaseModel):
+    filename: Optional[str] = None
+    raw_text: Optional[str] = None
+    parsed_profile: Optional[Dict[str, Any]] = None
+    reparse: bool = False
+
+
+def _resume_detail_response(resume: SavedResume) -> Dict[str, Any]:
+    return {
+        "id": resume.id,
+        "filename": resume.filename,
+        "created_at": resume.created_at.isoformat() if resume.created_at else None,
+        "updated_at": resume.updated_at.isoformat() if resume.updated_at else None,
+        "parsed_profile": resume.parsed_profile,
+        "raw_text": resume.raw_text,
+    }
 
 @router.post("/parse-resume")
 async def parse_resume_endpoint(req: ParseResumeRequest):
@@ -89,13 +107,41 @@ async def get_saved_resume_detail(
     resume = await db.get(SavedResume, resume_id)
     if not resume:
         raise HTTPException(status_code=404, detail="简历不存在或已被删除")
-    return {
-        "id": resume.id,
-        "filename": resume.filename,
-        "created_at": resume.created_at.isoformat() if resume.created_at else None,
-        "parsed_profile": resume.parsed_profile,
-        "raw_text": resume.raw_text,
-    }
+    return _resume_detail_response(resume)
+
+
+@router.put("/resumes/{resume_id}")
+async def update_saved_resume(
+    resume_id: str,
+    payload: ResumeUpdateRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a saved resume's filename, raw text and/or parsed profile."""
+    resume = await db.get(SavedResume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在或已被删除")
+
+    if payload.filename is not None:
+        filename = payload.filename.strip()
+        if not filename:
+            raise HTTPException(status_code=400, detail="简历文件名不能为空")
+        resume.filename = filename
+
+    if payload.raw_text is not None:
+        raw_text = payload.raw_text.strip()
+        if not raw_text:
+            raise HTTPException(status_code=400, detail="简历原文内容不能为空")
+        resume.raw_text = raw_text
+
+    if payload.reparse:
+        # 用最新原文重新 AI 解析并覆盖画像（parse_resume 内部有失败兜底，不会抛出）
+        resume.parsed_profile = await parser_service.parse_resume(resume.raw_text)
+    elif payload.parsed_profile is not None:
+        resume.parsed_profile = payload.parsed_profile
+
+    await db.commit()
+    await db.refresh(resume)
+    return _resume_detail_response(resume)
 
 @router.get("/resumes")
 async def get_saved_resumes(
@@ -112,6 +158,7 @@ async def get_saved_resumes(
                 "id": r.id,
                 "filename": r.filename,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                 "parsed_profile": r.parsed_profile,
                 "raw_text_preview": r.raw_text[:200] + "..." if len(r.raw_text) > 200 else r.raw_text
             }

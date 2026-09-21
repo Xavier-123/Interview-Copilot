@@ -14,8 +14,36 @@ import {
   AlertCircle,
   Tag,
   Briefcase,
+  Pencil,
 } from 'lucide-react';
 import type { SavedResumeItem, SavedResumeDetail } from '../types';
+
+// 编辑弹窗表单状态（画像字段平铺，列表型字段以分隔符文本编辑）
+interface EditProjectForm {
+  name: string;
+  role: string;
+  tech_stack: string;
+  highlights: string;
+}
+
+interface EditFormState {
+  id: string;
+  filename: string;
+  raw_text: string;
+  name: string;
+  experience_years: string;
+  skills: string;
+  education: string;
+  summary_profile: string;
+  projects: EditProjectForm[];
+  reparse: boolean;
+}
+
+const splitList = (value: string): string[] =>
+  value
+    .split(/[,，、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 interface ResumeManagementViewProps {
   onBack: () => void;
@@ -35,6 +63,9 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [pastedText, setPastedText] = useState<string>('');
   const [pastedTitle, setPastedTitle] = useState<string>('');
+  const [editingResume, setEditingResume] = useState<EditFormState | null>(null);
+  const [savingEdit, setSavingEdit] = useState<boolean>(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -138,6 +169,98 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
       }
     } catch (err) {
       console.error('Failed to fetch resume detail:', err);
+    }
+  };
+
+  // Open edit modal with current resume values
+  const handleEdit = async (resumeId: string) => {
+    try {
+      const res = await fetch(`/api/v1/profiles/resumes/${resumeId}`);
+      if (!res.ok) {
+        alert('获取简历详情失败');
+        return;
+      }
+      const data: SavedResumeDetail = await res.json();
+      const profile = data.parsed_profile || {};
+      setEditError(null);
+      setEditingResume({
+        id: data.id,
+        filename: data.filename,
+        raw_text: data.raw_text,
+        name: profile.name || '',
+        experience_years: profile.experience_years != null ? String(profile.experience_years) : '',
+        skills: (profile.skills || []).join(', '),
+        education: profile.education || '',
+        summary_profile: profile.summary_profile || '',
+        projects: (profile.projects || []).map((p) => ({
+          name: p.name || '',
+          role: p.role || '',
+          tech_stack: (p.tech_stack || []).join(', '),
+          highlights: p.highlights || '',
+        })),
+        reparse: false,
+      });
+    } catch (err) {
+      console.error('Failed to open resume editor:', err);
+    }
+  };
+
+  // Persist edit via PUT, then refresh list and any open preview
+  const handleSaveEdit = async () => {
+    if (!editingResume) return;
+    const filename = editingResume.filename.trim();
+    const rawText = editingResume.raw_text.trim();
+    if (!filename || !rawText) {
+      setEditError('简历标题与原文内容不能为空');
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const body: Record<string, unknown> = {
+        filename,
+        raw_text: rawText,
+        reparse: editingResume.reparse,
+      };
+      if (!editingResume.reparse) {
+        body.parsed_profile = {
+          name: editingResume.name.trim() || '候选人',
+          experience_years: editingResume.experience_years
+            ? Number(editingResume.experience_years)
+            : undefined,
+          skills: splitList(editingResume.skills),
+          projects: editingResume.projects
+            .filter((p) => p.name.trim() || p.highlights.trim())
+            .map((p) => ({
+              name: p.name.trim(),
+              role: p.role.trim(),
+              tech_stack: splitList(p.tech_stack),
+              highlights: p.highlights.trim(),
+            })),
+          education: editingResume.education.trim(),
+          summary_profile: editingResume.summary_profile.trim(),
+        };
+      }
+
+      const res = await fetch(`/api/v1/profiles/resumes/${editingResume.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || '保存失败，请稍后重试');
+      }
+      const data: SavedResumeDetail = await res.json();
+      setEditingResume(null);
+      setUploadSuccess(`简历已更新: ${data.filename}`);
+      await fetchResumes();
+      if (previewResume?.id === data.id) setPreviewResume(data);
+    } catch (err: any) {
+      setEditError(err.message || '保存失败');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -258,7 +381,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
           {resumes.map((resume) => {
             const profile = resume.parsed_profile || {};
             const skills: string[] = profile.skills || [];
-            const role = profile.title || profile.job_role || '通用候选人';
+            const role = profile.title || profile.job_role || profile.name || '通用候选人';
             const expYears = profile.experience_years ? `${profile.experience_years}年经验` : null;
 
             return (
@@ -286,13 +409,25 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      onClick={(e) => handleDelete(resume.id, resume.filename, e)}
-                      title="删除该简历"
-                      className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg transition cursor-pointer shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center space-x-1 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(resume.id);
+                        }}
+                        title="编辑该简历"
+                        className="p-1.5 text-gray-400 hover:text-purple-300 hover:bg-purple-950/40 rounded-lg transition cursor-pointer"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(resume.id, resume.filename, e)}
+                        title="删除该简历"
+                        className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg transition cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Profile Tags */}
@@ -464,6 +599,13 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 <button
+                  onClick={() => handleEdit(previewResume.id)}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 text-gray-300 hover:text-purple-300 text-xs font-medium transition cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>编辑</span>
+                </button>
+                <button
                   onClick={() => {
                     onSelectResumeForMock(previewResume.raw_text, previewResume.filename);
                     setPreviewResume(null);
@@ -518,6 +660,277 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   {previewResume.raw_text}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Edit Modal */}
+      {editingResume && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-3xl max-h-[85vh] rounded-2xl bg-gray-900 border border-gray-800 p-6 flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <Pencil className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-white">编辑简历</h3>
+              </div>
+              <button
+                onClick={() => setEditingResume(null)}
+                className="p-1 rounded text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form (scrollable) */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+              {editError && (
+                <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-700/60 text-red-300 text-xs flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {/* Filename */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-300">简历标题 / 文件名</label>
+                <input
+                  type="text"
+                  value={editingResume.filename}
+                  onChange={(e) => setEditingResume({ ...editingResume, filename: e.target.value })}
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                  placeholder="例如：前端架构师版"
+                />
+              </div>
+
+              {/* Raw text */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-300">
+                  简历原文 <span className="font-normal text-gray-500">（模拟面试将使用此内容）</span>
+                </label>
+                <textarea
+                  rows={8}
+                  value={editingResume.raw_text}
+                  onChange={(e) => setEditingResume({ ...editingResume, raw_text: e.target.value })}
+                  className="w-full text-xs p-3 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y font-mono leading-relaxed"
+                />
+              </div>
+
+              {/* Reparse toggle */}
+              <label className="flex items-center space-x-2 text-xs text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={editingResume.reparse}
+                  onChange={(e) => setEditingResume({ ...editingResume, reparse: e.target.checked })}
+                  className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-950 accent-purple-600 cursor-pointer"
+                />
+                <span>
+                  保存后重新进行 AI 智能解析
+                  <span className="text-gray-500">（以最新原文重新生成画像，覆盖下方手动内容）</span>
+                </span>
+              </label>
+
+              {/* Parsed profile editor */}
+              <div
+                className={`p-4 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-3 transition-opacity ${
+                  editingResume.reparse ? 'opacity-40 pointer-events-none' : ''
+                }`}
+              >
+                <div className="text-xs font-bold text-purple-300 flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>AI 解析画像（手动修正）</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-gray-400">姓名</label>
+                    <input
+                      type="text"
+                      value={editingResume.name}
+                      onChange={(e) => setEditingResume({ ...editingResume, name: e.target.value })}
+                      className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-gray-400">工作年限（年）</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editingResume.experience_years}
+                      onChange={(e) =>
+                        setEditingResume({ ...editingResume, experience_years: e.target.value })
+                      }
+                      className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-gray-400">技能（逗号或换行分隔）</label>
+                  <textarea
+                    rows={2}
+                    value={editingResume.skills}
+                    onChange={(e) => setEditingResume({ ...editingResume, skills: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-gray-400">教育背景</label>
+                  <input
+                    type="text"
+                    value={editingResume.education}
+                    onChange={(e) => setEditingResume({ ...editingResume, education: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-gray-400">个人总结</label>
+                  <textarea
+                    rows={2}
+                    value={editingResume.summary_profile}
+                    onChange={(e) =>
+                      setEditingResume({ ...editingResume, summary_profile: e.target.value })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y"
+                  />
+                </div>
+
+                {/* Projects */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] text-gray-400">项目经历</label>
+                    <button
+                      onClick={() =>
+                        setEditingResume({
+                          ...editingResume,
+                          projects: [
+                            ...editingResume.projects,
+                            { name: '', role: '', tech_stack: '', highlights: '' },
+                          ],
+                        })
+                      }
+                      className="inline-flex items-center space-x-1 text-[11px] text-purple-300 hover:text-purple-200 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>添加项目</span>
+                    </button>
+                  </div>
+                  {editingResume.projects.length === 0 && (
+                    <p className="text-[11px] text-gray-500 italic">暂无项目经历</p>
+                  )}
+                  {editingResume.projects.map((proj, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg bg-gray-950/60 border border-gray-800 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-gray-400">项目 {idx + 1}</span>
+                        <button
+                          onClick={() =>
+                            setEditingResume({
+                              ...editingResume,
+                              projects: editingResume.projects.filter((_, i) => i !== idx),
+                            })
+                          }
+                          title="移除该项目"
+                          className="text-gray-500 hover:text-red-400 transition cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="项目名称"
+                          value={proj.name}
+                          onChange={(e) =>
+                            setEditingResume({
+                              ...editingResume,
+                              projects: editingResume.projects.map((p, i) =>
+                                i === idx ? { ...p, name: e.target.value } : p
+                              ),
+                            })
+                          }
+                          className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                        />
+                        <input
+                          type="text"
+                          placeholder="担任角色"
+                          value={proj.role}
+                          onChange={(e) =>
+                            setEditingResume({
+                              ...editingResume,
+                              projects: editingResume.projects.map((p, i) =>
+                                i === idx ? { ...p, role: e.target.value } : p
+                              ),
+                            })
+                          }
+                          className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="技术栈（逗号分隔）"
+                        value={proj.tech_stack}
+                        onChange={(e) =>
+                          setEditingResume({
+                            ...editingResume,
+                            projects: editingResume.projects.map((p, i) =>
+                              i === idx ? { ...p, tech_stack: e.target.value } : p
+                            ),
+                          })
+                        }
+                        className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                      />
+                      <textarea
+                        rows={2}
+                        placeholder="项目亮点 / 成果"
+                        value={proj.highlights}
+                        onChange={(e) =>
+                          setEditingResume({
+                            ...editingResume,
+                            projects: editingResume.projects.map((p, i) =>
+                              i === idx ? { ...p, highlights: e.target.value } : p
+                            ),
+                          })
+                        }
+                        className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-gray-800 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setEditingResume(null)}
+                disabled={savingEdit}
+                className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-xs font-medium transition cursor-pointer disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={savingEdit || !editingResume.filename.trim() || !editingResume.raw_text.trim()}
+                className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium text-xs transition cursor-pointer"
+              >
+                {savingEdit ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{editingResume.reparse ? 'AI 解析中...' : '保存中...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>保存修改</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

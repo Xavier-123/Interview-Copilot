@@ -285,21 +285,6 @@ class InterviewerAuditService:
         db: Optional[AsyncSession] = None
     ):
         """将提炼出的黄金少样本和负向避坑规则按出题角色精准持久化至 PersonaMemoryModel。"""
-        # 兼容旧版调用签名: _persist_audit_evolution(persona_key, audit_result, db)
-        if isinstance(audit_result, str):
-            persona_key = audit_result
-            audit_dict = assistant_messages if isinstance(assistant_messages, dict) else {}
-            real_db = valid_keys if isinstance(valid_keys, AsyncSession) else db
-            return await self._persist_audit_evolution(
-                audit_result=audit_dict,
-                assistant_messages=[],
-                valid_keys=[persona_key],
-                key_to_name={},
-                default_role=persona_key,
-                is_fallback=is_fallback,
-                db=real_db
-            )
-
         # 异常兜底结果严禁写入数据库，彻底避免硬编码占位符污染记忆库
         if is_fallback:
             logger.info("Skip persisting fallback audit to prevent dummy memory pollution.")

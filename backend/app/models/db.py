@@ -128,3 +128,15 @@ async def init_db():
                 await conn.execute(text(f"ALTER TABLE evolution_candidates ADD COLUMN {col} {dtype}"))
             except Exception:
                 pass
+
+        # 面试日程：谈薪阶段记录 Offer 薪资（幂等迁移）
+        try:
+            await conn.execute(text("ALTER TABLE interview_schedules ADD COLUMN salary VARCHAR(128)"))
+        except Exception:
+            pass  # Already exists
+
+        # 简历编辑功能：user_resumes 记录最后修改时间
+        try:
+            await conn.execute(text("ALTER TABLE user_resumes ADD COLUMN updated_at DATETIME"))
+        except Exception:
+            pass  # Already exists

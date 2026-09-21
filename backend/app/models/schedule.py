@@ -15,6 +15,7 @@ class InterviewSchedule(Base):
     scheduled_at = Column(DateTime, nullable=False)
     location_type = Column(String(32), nullable=False, default="online")
     meeting_link_or_address = Column(String(512), nullable=True)
+    salary = Column(String(128), nullable=True)  # 谈薪阶段记录 Offer 薪资，自由文本（如 25k×15）
     status = Column(String(32), nullable=False, default="upcoming")
     jd_text = Column(Text, nullable=True)
     resume_id = Column(String(64), nullable=True)
