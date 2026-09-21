@@ -91,9 +91,45 @@ class EvolutionCandidateModel(Base):
     __tablename__ = "evolution_candidates"
 
     id = Column(String(64), primary_key=True, default=_id)
+    interviewer_id = Column(String(64), index=True, nullable=True)
+    candidate_version = Column(String(32), nullable=True)
     base_version_id = Column(String(64), nullable=True)
-    status = Column(String(32), default="draft", index=True, nullable=False)
+    status = Column(String(32), default="draft", index=True, nullable=False)  # draft, offline_tested, review_required, approved, rejected, canary, champion, rolled_back, retired
     candidate_spec = Column(JSON, default=dict, nullable=False)
     replay_metrics = Column(JSON, default=dict)
+    safety_check_passed = Column(Boolean, default=False)
+    created_by = Column(String(64), default="optimizer")
     review_notes = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ReplayRunModel(Base):
+    __tablename__ = "replay_runs"
+
+    id = Column(String(64), primary_key=True, default=_id)
+    candidate_id = Column(String(64), index=True, nullable=True)
+    interviewer_id = Column(String(64), index=True, nullable=True)
+    interviewer_version_id = Column(String(64), index=True, nullable=True)
+    dataset_name = Column(String(128), default="synthetic-persona-suite")
+    model_version = Column(String(64), default="default")
+    status = Column(String(32), default="completed", index=True, nullable=False)
+    metrics = Column(JSON, default=dict, nullable=False)
+    transcript = Column(JSON, default=list, nullable=False)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ExperimentModel(Base):
+    __tablename__ = "experiments"
+
+    id = Column(String(64), primary_key=True, default=_id)
+    name = Column(String(128), nullable=False)
+    interviewer_id = Column(String(64), index=True, nullable=False)
+    champion_version_id = Column(String(64), nullable=False)
+    challenger_version_id = Column(String(64), nullable=False)
+    traffic_split = Column(Float, default=0.1)
+    status = Column(String(32), default="canary", index=True, nullable=False)  # canary, running, rolled_back, completed
+    metrics = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

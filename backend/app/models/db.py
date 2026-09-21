@@ -115,3 +115,16 @@ async def init_db():
                 await conn.execute(text(f"ALTER TABLE interviewer_personas ADD COLUMN {col} {dtype}"))
             except Exception:
                 pass
+
+        # evolution_candidates 进化表扩展字段
+        for col, dtype in [
+            ("interviewer_id", "VARCHAR(64)"),
+            ("candidate_version", "VARCHAR(32)"),
+            ("safety_check_passed", "BOOLEAN DEFAULT 0"),
+            ("created_by", "VARCHAR(64) DEFAULT 'optimizer'"),
+            ("updated_at", "DATETIME"),
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE evolution_candidates ADD COLUMN {col} {dtype}"))
+            except Exception:
+                pass

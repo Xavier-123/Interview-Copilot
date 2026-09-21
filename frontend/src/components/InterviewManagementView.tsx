@@ -28,6 +28,7 @@ import type {
   ScheduleStatus,
 } from '../types';
 import { HistoryView } from './HistoryView';
+import { DateTimePicker } from './DateTimePicker';
 
 interface InterviewManagementViewProps {
   onBack: () => void;
@@ -745,12 +746,10 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                   <label className="block text-xs font-semibold text-gray-300 mb-1">
                     面试时间 <span className="text-red-400">*</span>
                   </label>
-                  <input
-                    type="datetime-local"
-                    required
+                  <DateTimePicker
                     value={formScheduledAt}
-                    onChange={(e) => setFormScheduledAt(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white focus:outline-none focus:border-emerald-500"
+                    onChange={setFormScheduledAt}
+                    placeholder="点击选择面试时间"
                   />
                 </div>
               </div>

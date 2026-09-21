@@ -15,6 +15,31 @@ body {
   color: #f3f4f6;
 }
 
+/* 深色主题下的原生控件（下拉框、日期输入等）统一按深色渲染，弹层不再发白 */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+select {
+  color-scheme: dark;
+}
+
+/* 日期选择弹层入场动画 */
+@keyframes picker-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.picker-pop {
+  animation: picker-pop 0.16s ease-out;
+  transform-origin: top left;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

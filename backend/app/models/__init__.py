@@ -10,6 +10,8 @@ from app.models.architecture import (
     MemoryItemModel,
     AuditEventModel,
     EvolutionCandidateModel,
+    ReplayRunModel,
+    ExperimentModel,
 )
 
 __all__ = [
@@ -30,5 +32,6 @@ __all__ = [
     "MemoryItemModel",
     "AuditEventModel",
     "EvolutionCandidateModel",
+    "ReplayRunModel",
+    "ExperimentModel",
 ]
-
