@@ -418,6 +418,7 @@ export interface InterviewScheduleItem {
   jd_text?: string;
   resume_id?: string;
   notes?: string;
+  email_reminded_at?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -448,5 +449,26 @@ export interface UpdateScheduleRequest {
   jd_text?: string;
   resume_id?: string;
   notes?: string;
+}
+
+// 邮件通知与系统设置契约
+export interface NotificationSettings {
+  email_enabled: boolean;
+  receiver_email: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_user: string;
+  smtp_password?: string;
+  smtp_use_ssl: boolean;
+  smtp_from_name: string;
+  remind_advance_hours: number;
+  has_password?: boolean;
+  updated_at?: string;
+}
+
+export interface BrowserNotificationConfig {
+  enabled: boolean;
+  /** 提前提醒档位（分钟），可多选；空数组表示不弹窗 */
+  advanceMinutes: number[];
 }
 

@@ -135,6 +135,12 @@ async def init_db():
         except Exception:
             pass  # Already exists
 
+        # 面试日程：记录邮件提醒已发送时间
+        try:
+            await conn.execute(text("ALTER TABLE interview_schedules ADD COLUMN email_reminded_at DATETIME"))
+        except Exception:
+            pass  # Already exists
+
         # 简历编辑功能：user_resumes 记录最后修改时间
         try:
             await conn.execute(text("ALTER TABLE user_resumes ADD COLUMN updated_at DATETIME"))

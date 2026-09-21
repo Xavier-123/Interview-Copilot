@@ -20,5 +20,6 @@ class InterviewSchedule(Base):
     jd_text = Column(Text, nullable=True)
     resume_id = Column(String(64), nullable=True)
     notes = Column(Text, nullable=True)
+    email_reminded_at = Column(DateTime, nullable=True)  # 邮件提醒发送时间戳（避免重复推送）
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

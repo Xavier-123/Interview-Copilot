@@ -3,6 +3,7 @@ from app.models.interview import InterviewSessionModel, InterviewMessageModel, I
 from app.models.persona import InterviewerPersona
 from app.models.resume import SavedResume
 from app.models.schedule import InterviewSchedule
+from app.models.notification import NotificationSetting
 from app.models.architecture import (
     InterviewerSpecModel,
     InterviewerVersionModel,
@@ -26,6 +27,7 @@ __all__ = [
     "InterviewerPersona",
     "SavedResume",
     "InterviewSchedule",
+    "NotificationSetting",
     "InterviewerSpecModel",
     "InterviewerVersionModel",
     "EvidenceItemModel",

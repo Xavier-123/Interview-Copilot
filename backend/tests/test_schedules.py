@@ -2,10 +2,12 @@ import pytest
 from datetime import datetime, timedelta
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from app.models.db import init_db
 
 
 @pytest.mark.asyncio
 async def test_schedules_lifecycle():
+    await init_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Create a schedule
@@ -73,6 +75,7 @@ async def test_schedules_lifecycle():
 @pytest.mark.asyncio
 async def test_schedule_salary_and_declined():
     """谈薪轮次：记录 Offer 薪资并以 declined（已婉拒）流转。"""
+    await init_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         target_time = (datetime.utcnow() + timedelta(days=3)).isoformat()

@@ -23,6 +23,8 @@ import {
   Phone,
   Banknote,
   Handshake,
+  Bell,
+  Mail,
 } from 'lucide-react';
 import type {
   InterviewScheduleItem,
@@ -31,6 +33,8 @@ import type {
 } from '../types';
 import { HistoryView } from './HistoryView';
 import { DateTimePicker } from './DateTimePicker';
+import { ReminderSettingsModal } from './ReminderSettingsModal';
+import { checkAndNotifyUpcomingSchedules } from '../utils/browserNotification';
 
 interface InterviewManagementViewProps {
   onBack: () => void;
@@ -52,6 +56,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   const [loading, setLoading] = useState<boolean>(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showModal, setShowModal] = useState<boolean>(false);
+  const [showReminderSettings, setShowReminderSettings] = useState<boolean>(false);
   const [editingSchedule, setEditingSchedule] = useState<InterviewScheduleItem | null>(null);
   const [expandedJdId, setExpandedJdId] = useState<string | null>(null);
 
@@ -75,7 +80,10 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
       const res = await fetch('/api/v1/schedules');
       if (res.ok) {
         const data = await res.json();
-        setSchedules(data.schedules || []);
+        const list: InterviewScheduleItem[] = data.schedules || [];
+        setSchedules(list);
+        // 扫描待面试日程并触发浏览器桌面弹窗提醒（如果到达提前阈值）
+        checkAndNotifyUpcomingSchedules(list, onStartMockWithSchedule);
       }
     } catch (err) {
       console.error('Failed to load schedules:', err);
@@ -86,6 +94,14 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
 
   useEffect(() => {
     fetchSchedules();
+    // 每 60 秒轮询检测临近面试并触发桌面通知
+    const timer = setInterval(() => {
+      setSchedules((prev) => {
+        checkAndNotifyUpcomingSchedules(prev, onStartMockWithSchedule);
+        return prev;
+      });
+    }, 60000);
+    return () => clearInterval(timer);
   }, []);
 
   // Open modal for Create
@@ -462,14 +478,26 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
               </button>
             </div>
 
-            {/* Add Schedule Button */}
-            <button
-              onClick={handleOpenCreate}
-              className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium text-xs shadow-lg shadow-emerald-900/30 transition cursor-pointer self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4" />
-              <span>登记面试日程</span>
-            </button>
+            {/* Action Buttons: Reminder Settings & Add Schedule */}
+            <div className="flex items-center space-x-2.5 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setShowReminderSettings(true)}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-gray-900/80 hover:bg-gray-800 border border-gray-700 hover:border-gray-600 text-gray-300 hover:text-white font-medium text-xs shadow-sm transition cursor-pointer"
+                title="配置临近面试的桌面弹窗与邮件推送通知"
+              >
+                <Bell className="w-3.5 h-3.5 text-amber-400" />
+                <span>提醒设置</span>
+              </button>
+
+              <button
+                onClick={handleOpenCreate}
+                className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium text-xs shadow-lg shadow-emerald-900/30 transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>登记面试日程</span>
+              </button>
+            </div>
           </div>
 
           {/* Schedule Cards List */}
@@ -537,6 +565,15 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                         </div>
 
                         <div className="flex items-center space-x-2 shrink-0">
+                          {schedule.email_reminded_at && (
+                            <span
+                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-950/70 border border-blue-800/60 text-blue-300"
+                              title="已向您的邮箱发送临近提醒"
+                            >
+                              <Mail className="w-2.5 h-2.5" />
+                              <span>已发邮件</span>
+                            </span>
+                          )}
                           {getStatusBadge(schedule.status)}
                         </div>
                       </div>
@@ -913,6 +950,12 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
           </div>
         </div>
       )}
+
+      {/* 面试日程提醒设置 Modal (桌面弹窗 & 邮件推送) */}
+      <ReminderSettingsModal
+        open={showReminderSettings}
+        onClose={() => setShowReminderSettings(false)}
+      />
     </div>
   );
 };

@@ -39,6 +39,7 @@ def _schedule_response(s: InterviewSchedule) -> dict:
         "jd_text": s.jd_text or "",
         "resume_id": s.resume_id,
         "notes": s.notes or "",
+        "email_reminded_at": _utc_iso(s.email_reminded_at),
         "created_at": _utc_iso(s.created_at),
         "updated_at": _utc_iso(s.updated_at),
     }

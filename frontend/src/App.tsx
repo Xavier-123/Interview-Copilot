@@ -12,6 +12,7 @@ import { loadLLMConfig } from './utils/llmConfig';
 import { loadSearchConfig } from './utils/searchConfig';
 import { resolveInterviewerLineup } from './utils/interviewers';
 import type { PersonaDisplayInfo } from './utils/interviewers';
+import { checkAndNotifyUpcomingSchedules } from './utils/browserNotification';
 import type {
   Message,
   EvaluationReport,
@@ -68,6 +69,27 @@ export function App() {
       if (interval) window.clearInterval(interval);
     };
   }, [view, status]);
+
+  // 全局定时扫描待面试日程（每 60 秒），若开启桌面弹窗则无论处于系统哪个页面均可收到原生桌面提醒
+  useEffect(() => {
+    const scanUpcomingSchedules = async () => {
+      try {
+        const res = await fetch('/api/v1/schedules');
+        if (res.ok) {
+          const data = await res.json();
+          checkAndNotifyUpcomingSchedules(data.schedules || [], () => {
+            setView('interviews');
+          });
+        }
+      } catch {
+        // silent background failure
+      }
+    };
+
+    scanUpcomingSchedules();
+    const timer = setInterval(scanUpcomingSchedules, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 1. Start Interview handler
   const handleStartInterview = async (config: {
