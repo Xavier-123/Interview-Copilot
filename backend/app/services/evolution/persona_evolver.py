@@ -71,11 +71,12 @@ class PersonaEvolver:
         )
 
         # ── 轮次 2：面试官追问 ──
+        ans1_snippet = ans_1[:200]
         prompt_q2 = (
             f"候选人刚才回答：'{ans1_snippet}'。\n"
             f"请先针对他刚才的陈述给出真切的专业反馈（点出其可疑点或含糊之处），"
             f"然后针对其底层原理、极限边界或真实数据来源深入追问（严禁以'好的'、'感谢您的回答'开场，控制在 3 句话内）。"
-        ).replace("ans1_snippet", ans_1[:200])
+        )
 
         resp_q2 = await llm_service.invoke([
             SystemMessage(content=sys_interviewer_prompt),
