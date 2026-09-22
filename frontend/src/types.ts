@@ -17,6 +17,8 @@ export type InterviewType =
   | 'structured'
   | 'custom';
 
+export type RoundsMode = 'fixed' | 'adaptive';
+
 // 面试类型中文标签（历史记录、对话导出等展示场景）
 export const INTERVIEW_TYPE_LABELS: Record<string, string> = {
   structured: '结构化全流程',
@@ -138,6 +140,7 @@ export interface Message {
   search_metadata?: SearchMetadata;
   turn_id?: string;
   trace_id?: string;
+  prompt_log_id?: string;
 }
 
 export interface QuestionIntent {
@@ -164,6 +167,23 @@ export interface TranscriptMessage {
   stage?: string;
   timestamp?: string;
   search_metadata?: SearchMetadata;
+  prompt_log_id?: string;
+}
+
+export interface PromptLogItem {
+  id: string;
+  session_id?: string;
+  turn_id?: string;
+  round_index: number;
+  stage?: string;
+  node: string;
+  call_type: string;
+  system_prompt: string;
+  user_prompt: string;
+  model?: string;
+  response: string;
+  timestamp?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface TranscriptObservation {
@@ -195,6 +215,7 @@ export interface TranscriptData {
   };
   messages: TranscriptMessage[];
   observations?: TranscriptObservation[];
+  prompt_logs?: PromptLogItem[];
   persona_labels?: Record<string, string>;
   report?: EvaluationReport | null;
 }

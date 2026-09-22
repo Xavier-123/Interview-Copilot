@@ -93,6 +93,10 @@ async def init_db():
         except Exception:
             pass  # Already exists or not needed
         try:
+            await conn.execute(text("ALTER TABLE interview_messages ADD COLUMN prompt_log_id VARCHAR(64)"))
+        except Exception:
+            pass  # Already exists or not needed
+        try:
             await conn.execute(text(
                 "UPDATE interview_messages SET seq = ("
                 "  SELECT COUNT(*) FROM interview_messages m2"

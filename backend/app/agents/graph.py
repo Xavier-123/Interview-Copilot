@@ -20,6 +20,20 @@ from app.agents.speaker import speaker_node
 
 CUSTOM_INTERVIEWER_NODES = ("technical", "programmer", "hr", "challenger", "management")
 
+def should_conclude_interview(state: InterviewState, round_count: int, max_rounds: int) -> bool:
+    """判断当前考核是否应结束并转入反问环节。
+    - fixed 模式：严格达到上限 max_rounds - 1 时结束。
+    - adaptive 模式：达到上限 max_rounds - 1 强制兜底；或达到最低轮次（3轮）且大模型判定已充分评估时提前收尾。
+    """
+    rounds_mode = state.get("rounds_mode", "fixed")
+    if rounds_mode == "adaptive":
+        if round_count >= (max_rounds - 1):
+            return True
+        if round_count >= 3 and state.get("is_ready_to_conclude"):
+            return True
+        return False
+    return round_count >= (max_rounds - 1)
+
 def after_observer_route(state: InterviewState) -> str:
     interview_type = state.get("interview_type", "structured")
     stage = state.get("stage", "technical")
@@ -34,7 +48,7 @@ def after_observer_route(state: InterviewState) -> str:
 
     # 1. Technical-only interview
     if interview_type == "technical":
-        if round_count >= (max_rounds - 1):
+        if should_conclude_interview(state, round_count, max_rounds):
             return "orchestrator_to_qa"
         if style == "stress" and not stress_triggered and round_count == 2:
             return "challenger"
@@ -42,7 +56,7 @@ def after_observer_route(state: InterviewState) -> str:
 
     # 1.5 Programmer comprehensive interview (项目经历 -> 计算机基础 -> 编码题)
     if interview_type == "programmer":
-        if round_count >= (max_rounds - 1):
+        if should_conclude_interview(state, round_count, max_rounds):
             return "orchestrator_to_qa"
         if style == "stress" and not stress_triggered and round_count == 2:
             return "challenger"
@@ -50,13 +64,13 @@ def after_observer_route(state: InterviewState) -> str:
 
     # 2. Behavioral / HR-only interview
     if interview_type in ("behavioral", "hr"):
-        if round_count >= (max_rounds - 1):
+        if should_conclude_interview(state, round_count, max_rounds):
             return "orchestrator_to_qa"
         return "hr"
 
     # 3. Management-only interview
     if interview_type == "management":
-        if round_count >= (max_rounds - 1):
+        if should_conclude_interview(state, round_count, max_rounds):
             return "orchestrator_to_qa"
         if style == "stress" and not stress_triggered and round_count == 2:
             return "challenger"
@@ -64,7 +78,7 @@ def after_observer_route(state: InterviewState) -> str:
 
     # 4. Custom interview（阵容 = 内置角色 key 或自定义人设 key，按轮次轮转）
     if interview_type == "custom":
-        if round_count >= (max_rounds - 1):
+        if should_conclude_interview(state, round_count, max_rounds):
             return "orchestrator_to_qa"
         # Challenger is an injected stress turn and intentionally does not
         # consume the normal round counter. Advance the custom lineup by one
@@ -88,11 +102,11 @@ def after_observer_route(state: InterviewState) -> str:
             return "orchestrator_to_hr"
         return "technical"
     elif stage == "hr":
-        if round_count >= (tech_target + hr_target):
+        if should_conclude_interview(state, round_count, max_rounds) or round_count >= (tech_target + hr_target):
             return "orchestrator_to_qa"
         return "hr"
     elif stage == "management":
-        if round_count >= mgmt_target:
+        if should_conclude_interview(state, round_count, max_rounds) or round_count >= mgmt_target:
             return "orchestrator_to_qa"
         return "management"
 

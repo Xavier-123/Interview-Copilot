@@ -9,7 +9,7 @@ from sqlalchemy import select, desc, delete, func
 from sqlalchemy.orm import selectinload
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.models.db import AsyncSessionLocal
-from app.models.interview import InterviewSessionModel, InterviewMessageModel, InterviewReportModel
+from app.models.interview import InterviewSessionModel, InterviewMessageModel, InterviewReportModel, InterviewPromptLogModel
 from app.models.architecture import EvolutionCandidateModel
 from app.models.persona import InterviewerPersona
 from app.agents.state import InterviewState
@@ -23,6 +23,7 @@ from app.services.search import search_service
 from app.services.scenario_service import scenario_service
 from app.services.audit import audit_service
 from app.services.memory import memory_gateway
+from app.services.prompt_recorder import prompt_recorder
 from app.agents.persona_presets import PERSONA_PRESETS
 
 logger = logging.getLogger(__name__)
@@ -140,6 +141,7 @@ class SessionManager:
         web_search_enabled: bool = False,
         tech_rounds_target: int = 2,
         max_rounds: int = 6,
+        rounds_mode: str = "fixed",
         company_scenario: Optional[Dict[str, Any]] = None
     ) -> InterviewState:
         session_id = str(uuid.uuid4())
@@ -180,6 +182,9 @@ class SessionManager:
             "web_search_enabled": web_search_enabled,
             "round_count": 0,
             "max_rounds": max_rounds,
+            "rounds_mode": rounds_mode,
+            "is_ready_to_conclude": False,
+            "conclude_reason": None,
             "tech_rounds_target": tech_rounds_target,
             "hr_rounds_target": 1,
             "mgmt_rounds_target": 3,
@@ -208,6 +213,7 @@ class SessionManager:
             "lifelines_used": 0,
             "latest_user_input": None,
             "evaluation_logs": [],
+            "prompt_logs": [],
             "status": "ready"
         }
         # Trace metadata is persisted with the session so a resumed interview
@@ -430,10 +436,16 @@ class SessionManager:
         the legacy message shape consumed by the frontend."""
         turn_id = state.get("turn_id")
         trace_id = state.get("trace_id")
+        prompt_logs = state.get("prompt_logs") or []
         for message in state.get("messages", [])[-3:]:
             if isinstance(message, dict):
                 message.setdefault("turn_id", turn_id)
                 message.setdefault("trace_id", trace_id)
+                if not message.get("prompt_log_id") and message.get("role") == "assistant" and prompt_logs:
+                    for pl in reversed(prompt_logs):
+                        if pl.get("node") == message.get("name") or pl.get("stage") == message.get("stage"):
+                            message["prompt_log_id"] = pl.get("id")
+                            break
 
     async def _persist_latest_evidence(self, state: InterviewState) -> None:
         logs = state.get("evaluation_logs") or []
@@ -664,6 +676,8 @@ class SessionManager:
             state["status"] = "finished"
             runtime_state = self._runtime_state(session_id, state)
             report = await generate_evaluation_report(runtime_state)
+            if report.get("prompt_logs"):
+                state["prompt_logs"] = list(state.get("prompt_logs") or []) + report["prompt_logs"]
 
             # 触发面试官表现质检与自我进化闭环（沉淀黄金案例与避坑经验）
             try:
@@ -676,6 +690,7 @@ class SessionManager:
                 logger.warning(f"Self-evolution audit failed: {e}")
 
             self._reports[session_id] = report
+            self._sessions[session_id] = state
 
             # Persist report and update session in DB
             try:
@@ -704,6 +719,8 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"Failed to persist report to DB: {e}")
 
+            # 同步全量 prompt logs 与磁盘文件
+            await self._sync_state_to_db(session_id, state)
             return report
 
     async def _create_evolution_candidate(
@@ -861,6 +878,7 @@ class SessionManager:
         report = self._reports.get(session_id)
         session_meta: Dict[str, Any] = {}
         db_messages: List[Dict[str, Any]] = []
+        db_prompt_logs: List[Dict[str, Any]] = []
 
         try:
             async with AsyncSessionLocal() as db:
@@ -868,7 +886,8 @@ class SessionManager:
                     select(InterviewSessionModel)
                     .options(
                         selectinload(InterviewSessionModel.messages),
-                        selectinload(InterviewSessionModel.report)
+                        selectinload(InterviewSessionModel.report),
+                        selectinload(InterviewSessionModel.prompt_logs)
                     )
                     .where(InterviewSessionModel.id == session_id)
                 )
@@ -896,9 +915,28 @@ class SessionManager:
                             "content": m.content,
                             "stage": m.stage,
                             "search_metadata": m.search_metadata,
+                            "prompt_log_id": m.prompt_log_id,
                             "timestamp": m.created_at.isoformat() if m.created_at else None,
                         }
                         for m in s.messages
+                    ]
+                    db_prompt_logs = [
+                        {
+                            "id": p.id,
+                            "session_id": p.session_id,
+                            "turn_id": p.turn_id,
+                            "round_index": p.round_index,
+                            "stage": p.stage,
+                            "node": p.node,
+                            "call_type": p.call_type,
+                            "system_prompt": p.system_prompt,
+                            "user_prompt": p.user_prompt,
+                            "response": p.response,
+                            "model": p.model,
+                            "metadata": p.metadata_json or {},
+                            "timestamp": p.created_at.isoformat() if p.created_at else None,
+                        }
+                        for p in (s.prompt_logs or [])
                     ]
                     if s.report and not report:
                         report = {
@@ -918,6 +956,7 @@ class SessionManager:
                 session_meta["interview_type"] = state["interview_type"]
 
         messages = state.get("messages") or db_messages
+        prompt_logs = state.get("prompt_logs") or db_prompt_logs
 
         persona_labels = ((state.get("custom_config") or {}).get("persona_labels")) or {}
 
@@ -925,6 +964,7 @@ class SessionManager:
             "session": session_meta,
             "messages": messages,
             "observations": state.get("evaluation_logs") or [],
+            "prompt_logs": prompt_logs,
             "persona_labels": persona_labels,
             "report": report
         }
@@ -1023,6 +1063,10 @@ class SessionManager:
         s = transcript.get("session", {}) or {}
         role = (s.get("job_role") or "模拟面试").strip().replace("/", "_")[:30]
         stamp = datetime.now().strftime("%Y%m%d_%H%M")
+        if fmt in ("prompts_json", "prompt_json"):
+            return f"全量Prompt记录_{role}_{stamp}.json"
+        if fmt in ("prompts_markdown", "prompts_md"):
+            return f"全量Prompt记录_{role}_{stamp}.md"
         ext = "json" if fmt == "json" else "md"
         return f"面试记录_{role}_{stamp}.{ext}"
 
@@ -1184,7 +1228,27 @@ class SessionManager:
                     # 全量增量同步消息（user + assistant 都落库，支持 redo/restart 回滚）
                     await self._sync_messages(db, session_id, state.get("messages", []))
 
+                    # 增量同步大模型 Prompt 日志
+                    await self._sync_prompt_logs(db, session_id, state.get("prompt_logs", []))
+
                     await db.commit()
+
+            # 同步写入磁盘镜像文件（Markdown 与 JSON）
+            session_meta = {
+                "session_id": session_id,
+                "title": state.get("title", "模拟面试"),
+                "industry": state.get("industry"),
+                "job_role": state.get("job_role"),
+                "seniority": state.get("seniority"),
+                "difficulty": state.get("difficulty"),
+                "round_count": state.get("round_count", 0),
+            }
+            prompt_recorder.save_prompts_to_disk(
+                session_id,
+                session_meta,
+                state.get("prompt_logs", []),
+                state.get("messages", [])
+            )
         except Exception as e:
             logger.error(f"Failed to sync state to DB: {e}")
 
@@ -1227,8 +1291,52 @@ class SessionManager:
                 content=m.get("content", ""),
                 stage=m.get("stage"),
                 search_metadata=m.get("search_metadata"),
+                prompt_log_id=m.get("prompt_log_id"),
                 created_at=created or datetime.utcnow(),
             ))
+
+    async def _sync_prompt_logs(self, db, session_id: str, prompt_logs: List[Dict[str, Any]]):
+        """将 state.prompt_logs 增量同步到 interview_prompt_logs 表。"""
+        if not prompt_logs:
+            return
+        result = await db.execute(
+            select(InterviewPromptLogModel.id)
+            .where(InterviewPromptLogModel.session_id == session_id)
+        )
+        existing_ids = set(result.scalars().all())
+
+        for p in prompt_logs:
+            if not isinstance(p, dict):
+                continue
+            p_id = p.get("id") or str(uuid.uuid4())
+            if p_id in existing_ids:
+                continue
+
+            created = None
+            ts = p.get("timestamp")
+            if ts:
+                try:
+                    created = datetime.fromisoformat(ts)
+                except (TypeError, ValueError):
+                    created = None
+
+            db.add(InterviewPromptLogModel(
+                id=p_id,
+                session_id=session_id,
+                turn_id=p.get("turn_id"),
+                message_id=p.get("message_id"),
+                round_index=p.get("round_index", 0),
+                stage=p.get("stage"),
+                node=p.get("node", "unknown"),
+                call_type=p.get("call_type", "interviewer_question"),
+                system_prompt=p.get("system_prompt", ""),
+                user_prompt=p.get("user_prompt", ""),
+                response=p.get("response", ""),
+                model=p.get("model"),
+                metadata_json=p.get("metadata") or {},
+                created_at=created or datetime.utcnow(),
+            ))
+            existing_ids.add(p_id)
 
     async def simulate_standard_answer(
         self,
@@ -1304,6 +1412,21 @@ class SessionManager:
             llm_config=self._llm_configs.get(session_id)
         )
 
+        prompt_log = prompt_recorder.build_prompt_log(
+            session_id=session_id,
+            node="coach",
+            call_type="golden_answer",
+            system_prompt=sys_msg,
+            user_prompt=user_prompt,
+            response=resp.content,
+            round_index=state.get("round_count", 0),
+            stage="golden_answer",
+            turn_id=state.get("turn_id"),
+        )
+        if "prompt_logs" in state:
+            state["prompt_logs"].append(prompt_log)
+            await self._sync_state_to_db(session_id, state)
+
         return {
             "session_id": session_id,
             "standard_answer": resp.content,
@@ -1311,6 +1434,7 @@ class SessionManager:
             "interviewer": interviewer,
             "web_search_used": bool(search_outcome and search_outcome.succeeded),
             "search_metadata": search_outcome.to_metadata() if search_outcome else None,
+            "prompt_log_id": prompt_log["id"],
         }
 
     async def toggle_web_search(self, session_id: str, enabled: Optional[bool] = None) -> dict:

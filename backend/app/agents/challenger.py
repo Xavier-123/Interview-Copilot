@@ -3,6 +3,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import InterviewState
 from app.agents.prompts import CHALLENGER_PROMPT
 from app.agents.llm import llm_service
+from app.services.prompt_recorder import prompt_recorder
 
 async def challenger_node(state: InterviewState) -> dict:
     """
@@ -25,16 +26,31 @@ async def challenger_node(state: InterviewState) -> dict:
         llm_config=state.get("llm_config")
     )
 
+    prompt_log = prompt_recorder.build_prompt_log(
+        session_id=state.get("session_id"),
+        node="challenger",
+        call_type="interviewer_question",
+        system_prompt=sys_msg,
+        user_prompt=prompt,
+        response=resp.content,
+        round_index=state.get("round_count", 0),
+        stage=state.get("stage", "technical"),
+        turn_id=state.get("turn_id"),
+    )
+
     out_msg = {
         "role": "assistant",
         "name": "challenger",
         "content": resp.content,
         "stage": state.get("stage", "technical"),
+        "prompt_log_id": prompt_log["id"],
         "timestamp": datetime.now().isoformat()
     }
 
     return {
         "messages": [out_msg],
+        "prompt_logs": [prompt_log],
+        "stage": "challenger",
         "stress_triggered": True,
         "current_interviewer": "challenger",
         "status": "waiting_user"

@@ -6,6 +6,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import InterviewState
 from app.agents.prompts import SHADOW_OBSERVER_PROMPT
 from app.agents.llm import llm_service
+from app.services.prompt_recorder import prompt_recorder
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +70,26 @@ async def shadow_observer_node(state: InterviewState) -> dict:
     if prior_action == "SWITCH_TOPIC":
         prior_depth = 0
 
-    # Find the last question asked by an interviewer
+    # Find the last question asked by an interviewer。
+    # 优先取最近一位真实面试官（含自定义人设/预设 key，如 persona_xxxx、preset_xxxx）的提问，
+    # orchestrator 的欢迎/串场仅作兜底——否则自定义面试的观察记录会错位到欢迎词上。
     last_question = "请介绍你的技术或业务实践"
+    orchestrator_fallback: Optional[str] = None
     for msg in reversed(messages):
-        if msg.get("role") == "assistant" and msg.get("name") in ("technical", "programmer", "hr", "challenger", "orchestrator", "management"):
-            last_question = msg.get("content", "")
-            break
+        name = (msg.get("name") or "").strip()
+        if msg.get("role") != "assistant" or not name:
+            continue
+        if name == "orchestrator":
+            if orchestrator_fallback is None:
+                orchestrator_fallback = msg.get("content", "")
+            continue
+        last_question = msg.get("content", "") or last_question
+        break
+    else:
+        if orchestrator_fallback:
+            last_question = orchestrator_fallback
+    if last_question == "请介绍你的技术或业务实践" and orchestrator_fallback:
+        last_question = orchestrator_fallback
 
     sys_msg = SHADOW_OBSERVER_PROMPT.format(
         interviewer=interviewer,
@@ -88,32 +103,41 @@ async def shadow_observer_node(state: InterviewState) -> dict:
 
     prompt = "请作为影子观察员，客观记录候选人本轮回答的满足度评分(0.0~1.0)、回答状态、亮点、缺陷、追问线索及核心主张，严格输出合法 JSON 结构。"
 
-    try:
-        resp = await llm_service.invoke(
-            [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
-            llm_config=state.get("llm_config")
-        )
-        content = resp.content.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+    resp_raw = ""
+    parsed_data = None
+    # 解析失败时带纠正提示重试一次，避免模板兜底数据静默流入评分链路
+    for attempt, extra in enumerate(("", "\n【重要】你上一次的输出无法解析为合法 JSON。请重新输出，必须是单一 ```json 代码块，块外无任何文字，块内无注释与省略号，所有字段完整。")):
+        try:
+            resp = await llm_service.invoke(
+                [SystemMessage(content=sys_msg + extra), HumanMessage(content=prompt)],
+                llm_config=state.get("llm_config")
+            )
+            resp_raw = resp.content
+            content = resp.content.strip()
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
 
-        parsed_data = json.loads(content)
-    except Exception as e:
-        logger.warning(f"Shadow observer parsing failed: {e}. Generating fallback observation.")
-        parsed_data = {
-            "topic": current_topic or "核心系统实践与架构方案",
-            "satisfaction_score": 0.78,
-            "strengths": ["思路清晰，对业务场景有明确认识"],
-            "weaknesses": ["回答中量化数据和极端边界兜底阐述偏少"],
-            "follow_up_hint": "针对方案在极端并发或网络抖动下的容灾边界进行深挖",
-            "key_claim": f"候选人陈述了关于'{current_topic or '系统方案'}'的实现思路",
-            "depth_score": 7.5,
-            "logic_score": 7.5,
-            "star_compliance": 7.0,
-            "flags": ["standard_response"]
-        }
+            parsed_data = json.loads(content)
+            break
+        except Exception as e:
+            if attempt == 0:
+                logger.warning(f"Shadow observer parsing failed, retrying once: {e}")
+                continue
+            logger.warning(f"Shadow observer parsing failed after retry: {e}. Generating fallback observation.")
+            parsed_data = {
+                "topic": current_topic or "核心系统实践与架构方案",
+                "satisfaction_score": 0.78,
+                "strengths": ["思路清晰，对业务场景有明确认识"],
+                "weaknesses": ["回答中量化数据和极端边界兜底阐述偏少"],
+                "follow_up_hint": "针对方案在极端并发或网络抖动下的容灾边界进行深挖",
+                "key_claim": f"候选人陈述了关于'{current_topic or '系统方案'}'的实现思路",
+                "depth_score": 7.5,
+                "logic_score": 7.5,
+                "star_compliance": 7.0,
+                "flags": ["standard_response"]
+            }
 
     # Extract score
     raw_score = parsed_data.get("satisfaction_score")
@@ -226,10 +250,39 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         "is_memorized": is_memorized,
         "memorization_signals": memorization_signals,
         "break_routine_hint": break_routine_hint,
+        "is_ready_to_conclude": bool(parsed_data.get("is_ready_to_conclude", False)),
+        "conclude_reason": parsed_data.get("conclude_reason") if parsed_data.get("is_ready_to_conclude") else None,
     }
+
+    # 大模型自适应结课判断
+    raw_conclude = parsed_data.get("is_ready_to_conclude")
+    is_ready_to_conclude = bool(raw_conclude) if raw_conclude is not None else False
+    conclude_reason = parsed_data.get("conclude_reason") if is_ready_to_conclude else None
+
+    prompt_log = prompt_recorder.build_prompt_log(
+        session_id=state.get("session_id"),
+        node="shadow_observer",
+        call_type="shadow_observation",
+        system_prompt=sys_msg,
+        user_prompt=prompt,
+        response=resp_raw or json.dumps(parsed_data, ensure_ascii=False),
+        round_index=round_count,
+        stage=state.get("stage"),
+        turn_id=state.get("turn_id"),
+        metadata={
+            "interviewer": interviewer,
+            "topic": target_topic,
+            "satisfaction_score": satisfaction_score,
+            "answer_status": answer_status,
+            "dig_action": dig_action,
+            "is_ready_to_conclude": is_ready_to_conclude,
+            "conclude_reason": conclude_reason,
+        }
+    )
 
     return {
         "evaluation_logs": [observation],
+        "prompt_logs": [prompt_log],
         "current_topic": target_topic,
         "topic_depth": new_depth,
         "last_satisfaction_score": satisfaction_score,
@@ -239,5 +292,7 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         "follow_up_hint": follow_up_hint,
         "next_topic_hint": next_topic_hint,
         "break_routine_hint": break_routine_hint,
-        "condensed_memory": updated_memory
+        "condensed_memory": updated_memory,
+        "is_ready_to_conclude": is_ready_to_conclude,
+        "conclude_reason": conclude_reason,
     }

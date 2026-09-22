@@ -7,6 +7,7 @@ from app.agents.prompts import MANAGEMENT_SPECIALIST_PROMPT
 from app.agents.llm import llm_service
 from app.agents import interviewer_utils
 from app.services.search import runtime_search_config, search_service
+from app.services.prompt_recorder import prompt_recorder
 
 async def management_node(state: InterviewState, config: Optional[RunnableConfig] = None) -> dict:
     """
@@ -71,11 +72,28 @@ async def management_node(state: InterviewState, config: Optional[RunnableConfig
     )
 
     new_round = round_count + 1
+    prompt_log = prompt_recorder.build_prompt_log(
+        session_id=state.get("session_id"),
+        node="management",
+        call_type="interviewer_question",
+        system_prompt=sys_msg,
+        user_prompt=prompt,
+        response=resp.content,
+        round_index=new_round,
+        stage="management",
+        turn_id=state.get("turn_id"),
+        metadata={
+            "dig_action": dig_action,
+            "has_search": bool(search_outcome),
+        }
+    )
+
     out_msg = {
         "role": "assistant",
         "name": "management",
         "content": resp.content,
         "stage": "management",
+        "prompt_log_id": prompt_log["id"],
         "timestamp": datetime.now().isoformat()
     }
     if search_outcome:
@@ -83,6 +101,7 @@ async def management_node(state: InterviewState, config: Optional[RunnableConfig
 
     return {
         "messages": [out_msg],
+        "prompt_logs": [prompt_log],
         "round_count": new_round,
         "stage": "management",
         "current_interviewer": "management",

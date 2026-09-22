@@ -8,6 +8,7 @@ from app.agents.llm import llm_service
 from app.agents import interviewer_utils
 from app.services.search import runtime_search_config, search_service
 from app.services.rag import rag_service
+from app.services.prompt_recorder import prompt_recorder
 
 async def technical_node(state: InterviewState, config: Optional[RunnableConfig] = None) -> dict:
     """
@@ -105,11 +106,30 @@ async def technical_node(state: InterviewState, config: Optional[RunnableConfig]
     )
 
     new_round = round_count + 1
+    prompt_log = prompt_recorder.build_prompt_log(
+        session_id=state.get("session_id"),
+        node="technical",
+        call_type="interviewer_question",
+        system_prompt=sys_msg,
+        user_prompt=prompt,
+        response=resp.content,
+        round_index=new_round,
+        stage="technical",
+        turn_id=state.get("turn_id"),
+        metadata={
+            "topic": current_topic,
+            "dig_action": dig_action,
+            "has_rag": bool(rag_items),
+            "has_search": bool(search_outcome),
+        }
+    )
+
     out_msg = {
         "role": "assistant",
         "name": "technical",
         "content": resp.content,
         "stage": "technical",
+        "prompt_log_id": prompt_log["id"],
         "timestamp": datetime.now().isoformat()
     }
     if search_outcome:
@@ -117,6 +137,7 @@ async def technical_node(state: InterviewState, config: Optional[RunnableConfig]
 
     return {
         "messages": [out_msg],
+        "prompt_logs": [prompt_log],
         "round_count": new_round,
         "stage": "technical",
         "current_interviewer": "technical",

@@ -33,6 +33,7 @@ class InterviewSessionModel(Base):
 
     messages = relationship("InterviewMessageModel", back_populates="session", cascade="all, delete-orphan", order_by="InterviewMessageModel.seq")
     report = relationship("InterviewReportModel", back_populates="session", uselist=False, cascade="all, delete-orphan")
+    prompt_logs = relationship("InterviewPromptLogModel", back_populates="session", cascade="all, delete-orphan", order_by="InterviewPromptLogModel.created_at")
 
 class InterviewMessageModel(Base):
     __tablename__ = "interview_messages"
@@ -45,6 +46,7 @@ class InterviewMessageModel(Base):
     content = Column(Text, nullable=False)
     stage = Column(String(64), nullable=True)
     search_metadata = Column(JSON, nullable=True)
+    prompt_log_id = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("InterviewSessionModel", back_populates="messages")
@@ -66,3 +68,24 @@ class InterviewReportModel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("InterviewSessionModel", back_populates="report")
+
+
+class InterviewPromptLogModel(Base):
+    __tablename__ = "interview_prompt_logs"
+
+    id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(64), ForeignKey("interview_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    turn_id = Column(String(64), nullable=True, index=True)
+    message_id = Column(String(64), nullable=True)
+    round_index = Column(Integer, default=0)
+    stage = Column(String(64), nullable=True)
+    node = Column(String(64), nullable=False)
+    call_type = Column(String(64), nullable=False)  # interviewer_question | shadow_observation | evaluation_report | golden_answer | transition
+    system_prompt = Column(Text, nullable=False)
+    user_prompt = Column(Text, nullable=False)
+    response = Column(Text, nullable=False)
+    model = Column(String(64), nullable=True)
+    metadata_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("InterviewSessionModel", back_populates="prompt_logs")

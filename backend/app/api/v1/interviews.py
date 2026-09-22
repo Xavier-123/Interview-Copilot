@@ -22,6 +22,7 @@ class CreateSessionRequest(BaseModel):
     llm_config: Optional[Dict[str, Any]] = None
     web_search_enabled: Optional[bool] = False
     max_rounds: Optional[int] = None              # 轮次上限（None -> 后端默认 6；programmer 前端传 8）
+    rounds_mode: Optional[str] = "fixed"          # 轮次决策模式: fixed (显式指定) | adaptive (大模型自决)
 
 class SearchRuntimeConfig(BaseModel):
     provider: str = "tavily"
@@ -74,7 +75,8 @@ async def create_interview_session(req: CreateSessionRequest):
             company_scenario=req.company_scenario,
             llm_config=req.llm_config,
             web_search_enabled=bool(req.web_search_enabled),
-            max_rounds=int(req.max_rounds) if req.max_rounds else 6
+            max_rounds=int(req.max_rounds) if req.max_rounds else 6,
+            rounds_mode=req.rounds_mode or "fixed"
         )
         return {
             "session_id": state["session_id"],
@@ -333,15 +335,46 @@ async def get_interview_transcript(session_id: str):
         raise HTTPException(status_code=404, detail="对话记录不存在")
     return transcript
 
+@router.get("/{session_id}/prompts")
+async def get_interview_prompts(session_id: str):
+    """获取本场模拟面试全链路大模型 Prompt 完整调用记录。"""
+    transcript = await session_manager.get_transcript(session_id)
+    if not transcript:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    prompt_logs = transcript.get("prompt_logs", [])
+    return {
+        "session_id": session_id,
+        "total_calls": len(prompt_logs),
+        "prompt_logs": prompt_logs,
+    }
+
 @router.get("/{session_id}/export")
 async def export_interview_transcript(session_id: str, format: str = "markdown"):
-    """将面试对话记录导出为文件下载（markdown / json）。"""
+    """将面试对话记录导出为文件下载（markdown / json / prompts_markdown / prompts_json）。"""
     transcript = await session_manager.get_transcript(session_id)
     if not transcript or not transcript.get("messages"):
         raise HTTPException(status_code=404, detail="对话记录不存在")
 
     fmt = (format or "markdown").lower()
-    if fmt == "json":
+    if fmt in ("prompts_markdown", "prompts_md"):
+        from app.services.prompt_recorder import prompt_recorder
+        content = prompt_recorder.render_full_prompts_markdown(
+            transcript.get("session", {}),
+            transcript.get("prompt_logs", []),
+            transcript.get("messages", [])
+        )
+        media_type = "text/markdown; charset=utf-8"
+        filename = session_manager.export_filename(transcript, "prompts_markdown")
+    elif fmt == "prompts_json":
+        from app.services.prompt_recorder import prompt_recorder
+        content = prompt_recorder.render_full_prompts_json(
+            transcript.get("session", {}),
+            transcript.get("prompt_logs", []),
+            transcript.get("messages", [])
+        )
+        media_type = "application/json; charset=utf-8"
+        filename = session_manager.export_filename(transcript, "prompts_json")
+    elif fmt == "json":
         content = session_manager.render_transcript_json(transcript)
         media_type = "application/json; charset=utf-8"
         filename = session_manager.export_filename(transcript, "json")

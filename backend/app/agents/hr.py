@@ -4,6 +4,7 @@ from app.agents.state import InterviewState
 from app.agents.prompts import HR_INTERVIEWER_PROMPT
 from app.agents.llm import llm_service
 from app.agents import interviewer_utils
+from app.services.prompt_recorder import prompt_recorder
 
 async def hr_node(state: InterviewState) -> dict:
     """
@@ -51,16 +52,31 @@ async def hr_node(state: InterviewState) -> dict:
     )
 
     new_round = round_count + 1
+    prompt_log = prompt_recorder.build_prompt_log(
+        session_id=state.get("session_id"),
+        node="hr",
+        call_type="interviewer_question",
+        system_prompt=sys_msg,
+        user_prompt=prompt,
+        response=resp.content,
+        round_index=new_round,
+        stage="hr",
+        turn_id=state.get("turn_id"),
+        metadata={"dig_action": dig_action}
+    )
+
     out_msg = {
         "role": "assistant",
         "name": "hr",
         "content": resp.content,
         "stage": "hr",
+        "prompt_log_id": prompt_log["id"],
         "timestamp": datetime.now().isoformat()
     }
 
     return {
         "messages": [out_msg],
+        "prompt_logs": [prompt_log],
         "round_count": new_round,
         "stage": "hr",
         "current_interviewer": "hr",

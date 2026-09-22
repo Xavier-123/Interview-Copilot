@@ -23,6 +23,7 @@ import type {
   SimulateAnswerResult,
   AppView,
   InterviewScheduleItem,
+  RoundsMode,
 } from './types';
 
 export function App() {
@@ -103,6 +104,7 @@ export function App() {
     style: string;
     language: string;
     webSearchEnabled: boolean;
+    roundsMode?: RoundsMode;
     maxRounds?: number;
     customConfig?: any;
     /** 本场出场自定义人设的展示信息（含 persona:<id> 引用） */
@@ -144,6 +146,7 @@ export function App() {
           web_search_enabled: config.webSearchEnabled,
           custom_config: config.customConfig,
           max_rounds: config.maxRounds,
+          rounds_mode: config.roundsMode || 'fixed',
           ...(llmConfig ? { llm_config: llmConfig } : {}),
         }),
       });

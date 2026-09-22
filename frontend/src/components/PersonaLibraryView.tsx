@@ -12,6 +12,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import type { Persona } from '../types';
+import { PersonaEvolutionModal } from './PersonaEvolutionModal';
 
 const AVATAR_OPTIONS = ['🎭', '🔥', '🧠', '🎯', '⚡', '🦅', '💎', '🧙', '🕵️', '👨‍💻', '👩‍💻', '🧑‍🏫'];
 
@@ -49,6 +50,13 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [saving, setSaving] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [evolutionOpen, setEvolutionOpen] = useState(false);
+  const [evolutionPersona, setEvolutionPersona] = useState<Persona | null>(null);
+
+  const openEvolution = (p: Persona) => {
+    setEvolutionPersona(p);
+    setEvolutionOpen(true);
+  };
 
   const fetchPersonas = useCallback(async () => {
     setLoading(true);
@@ -253,6 +261,15 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <div className="flex items-center justify-end space-x-1.5 mt-3 pt-3 border-t border-gray-800/70">
                 <button
                   type="button"
+                  onClick={() => openEvolution(p)}
+                  title="通过真实对抗模拟演练并针对性优化此面试官"
+                  className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-violet-950/60 border border-violet-800/50 hover:bg-violet-900/60 text-violet-300 transition"
+                >
+                  <Sparkles className="w-3 h-3 text-violet-400" />
+                  <span>一键仿真进化</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => openEdit(p)}
                   className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
                 >
@@ -450,6 +467,14 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </div>
         </div>
       )}
+
+      {/* Persona Auto-Evolution Modal */}
+      <PersonaEvolutionModal
+        open={evolutionOpen}
+        persona={evolutionPersona}
+        onClose={() => setEvolutionOpen(false)}
+        onSuccess={fetchPersonas}
+      />
     </div>
   );
 };

@@ -25,6 +25,7 @@ from app.agents import interviewer_utils
 from app.agents.persona_presets import PERSONA_PRESETS
 from app.services.rag import rag_service
 from app.services.audit import audit_service
+from app.services.prompt_recorder import prompt_recorder
 
 PERSONA_KEY_PREFIX = "persona_"   # 人设稳定 key 前缀（persona_xxxx），用作消息 name 与路由标识
 PRESET_KEY_PREFIX = "preset_"     # 内置预设 key 前缀（preset_xxxx）
@@ -216,9 +217,29 @@ async def persona_node(state: InterviewState) -> dict:
 
     prompt += f"{scenario_section}{rag_context}{interviewer_utils.QUESTION_LIMIT}"
 
+    print(f"sys_msg: {sys_msg}")
+    print(f"prompt: {prompt}")
     resp = await llm_service.invoke(
         [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
         llm_config=state.get("llm_config")
+    )
+
+    new_round = round_count + 1
+    prompt_log = prompt_recorder.build_prompt_log(
+        session_id=state.get("session_id"),
+        node=role,
+        call_type="interviewer_question",
+        system_prompt=sys_msg,
+        user_prompt=prompt,
+        response=resp.content,
+        round_index=new_round,
+        stage=STAGE_CUSTOM_PERSONA,
+        turn_id=state.get("turn_id"),
+        metadata={
+            "persona_name": persona.get("name"),
+            "dig_action": dig_action,
+            "has_rag": bool(rag_items),
+        }
     )
 
     out_msg = {
@@ -226,12 +247,14 @@ async def persona_node(state: InterviewState) -> dict:
         "name": role,
         "content": resp.content,
         "stage": STAGE_CUSTOM_PERSONA,
+        "prompt_log_id": prompt_log["id"],
         "timestamp": datetime.now().isoformat()
     }
 
     return {
         "messages": [out_msg],
-        "round_count": round_count + 1,
+        "prompt_logs": [prompt_log],
+        "round_count": new_round,
         "stage": STAGE_CUSTOM_PERSONA,
         "current_interviewer": role,
         "status": "waiting_user"

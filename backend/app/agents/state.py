@@ -11,6 +11,23 @@ class MessageItem(TypedDict):
     search_metadata: Optional[Dict[str, Any]]
     turn_id: Optional[str]
     trace_id: Optional[str]
+    prompt_log_id: Optional[str]
+
+
+class PromptLogItem(TypedDict):
+    id: str
+    session_id: Optional[str]
+    turn_id: Optional[str]
+    round_index: int
+    stage: Optional[str]
+    node: str
+    call_type: str
+    system_prompt: str
+    user_prompt: str
+    model: Optional[str]
+    response: str
+    timestamp: Optional[str]
+    metadata: Optional[Dict[str, Any]]
 
 
 class QuestionIntent(TypedDict, total=False):
@@ -47,6 +64,8 @@ class ShadowObservation(TypedDict):
     is_memorized: Optional[bool]    # 是否判定为背诵/套路化模板回答
     memorization_signals: Optional[List[str]] # 背诵特征（如：教科书编号、缺少项目细节、无权衡说明）
     break_routine_hint: Optional[str] # 针对背诵特征的破局追问提示
+    is_ready_to_conclude: Optional[bool] # 自适应模式下是否建议结课
+    conclude_reason: Optional[str]     # 结课理由
 
 class InterviewStateBase(TypedDict):
     # Session metadata
@@ -71,6 +90,9 @@ class InterviewStateBase(TypedDict):
     # Round & Control
     round_count: int
     max_rounds: int
+    rounds_mode: str                   # "fixed" | "adaptive"
+    is_ready_to_conclude: Optional[bool] # 大模型判定是否已充分评估可结课
+    conclude_reason: Optional[str]     # 结课理由
     tech_rounds_target: int
     hr_rounds_target: int
     mgmt_rounds_target: int
@@ -104,6 +126,9 @@ class InterviewStateBase(TypedDict):
     
     # Shadow Observer Stream
     evaluation_logs: Annotated[List[Dict[str, Any]], operator.add]
+
+    # Full LLM Prompt Logs
+    prompt_logs: Annotated[List[Dict[str, Any]], operator.add]
     
     # Lifecycle status: ready | in_progress | waiting_user | paused | finished
     status: str

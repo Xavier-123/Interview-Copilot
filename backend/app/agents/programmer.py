@@ -7,6 +7,7 @@ from app.agents.prompts import PROGRAMMER_SPECIALIST_PROMPT
 from app.agents.llm import llm_service
 from app.agents import interviewer_utils
 from app.services.search import runtime_search_config, search_service
+from app.services.prompt_recorder import prompt_recorder
 
 # 综合程序员面试的模块推进计划：
 # 前 2 轮 -> 项目经历；最后 1 轮 -> 编码题；中间 -> 计算机基础知识点轮转
@@ -115,11 +116,29 @@ async def programmer_node(state: InterviewState, config: Optional[RunnableConfig
     )
 
     new_round = round_count + 1
+    prompt_log = prompt_recorder.build_prompt_log(
+        session_id=state.get("session_id"),
+        node="programmer",
+        call_type="interviewer_question",
+        system_prompt=sys_msg,
+        user_prompt=prompt,
+        response=resp.content,
+        round_index=new_round,
+        stage="programmer",
+        turn_id=state.get("turn_id"),
+        metadata={
+            "module": module,
+            "dig_action": dig_action,
+            "has_search": bool(search_outcome),
+        }
+    )
+
     out_msg = {
         "role": "assistant",
         "name": "programmer",
         "content": resp.content,
         "stage": "programmer",
+        "prompt_log_id": prompt_log["id"],
         "timestamp": datetime.now().isoformat()
     }
     if search_outcome:
@@ -127,6 +146,7 @@ async def programmer_node(state: InterviewState, config: Optional[RunnableConfig
 
     return {
         "messages": [out_msg],
+        "prompt_logs": [prompt_log],
         "round_count": new_round,
         "stage": "programmer",
         "current_interviewer": "programmer",

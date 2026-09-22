@@ -20,7 +20,7 @@ import { loadLLMConfig } from '../utils/llmConfig';
 import { loadSearchConfig } from '../utils/searchConfig';
 import { SearchConfigModal } from './SearchConfigModal';
 import type { PersonaDisplayInfo } from '../utils/interviewers';
-import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, Persona } from '../types';
+import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, Persona, RoundsMode } from '../types';
 import { INDUSTRY_OPTIONS } from '../types';
 
 interface SetupViewProps {
@@ -35,6 +35,7 @@ interface SetupViewProps {
     style: string;
     language: string;
     webSearchEnabled: boolean;
+    roundsMode?: RoundsMode;
     maxRounds?: number;
     customConfig?: any;
     /** 本场出场自定义人设的展示信息（含 persona:<id> 引用），供面试官席位与气泡命名 */
@@ -228,6 +229,9 @@ export const SetupView: React.FC<SetupViewProps> = ({
   const [interviewType, setInterviewType] = useState<InterviewType>('structured');
   const [style, setStyle] = useState('rigorous');
   const [language, setLanguage] = useState('zh');
+  const [roundsMode, setRoundsMode] = useState<RoundsMode>('fixed');
+  const [fixedQuestionCount, setFixedQuestionCount] = useState<number>(5);
+  const [adaptiveMaxQuestions, setAdaptiveMaxQuestions] = useState<number>(15);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [searchConfigOpen, setSearchConfigOpen] = useState(false);
   const [hasLocalSearchKey, setHasLocalSearchKey] = useState(() => Boolean(loadSearchConfig()));
@@ -259,7 +263,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
     'technical',
     'hr',
   ]);
-  const [customFocusTopics, setCustomFocusTopics] = useState('分布式锁, MySQL MVCC, Kafka异步解耦');
+  const [customFocusTopics, setCustomFocusTopics] = useState('');
   const [myPersonas, setMyPersonas] = useState<Persona[]>([]);
 
   // Uploading status
@@ -357,7 +361,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
       style,
       language,
       webSearchEnabled,
-      maxRounds: interviewType === 'programmer' ? 8 : 6,
+      roundsMode,
+      maxRounds: roundsMode === 'fixed' ? fixedQuestionCount + 1 : adaptiveMaxQuestions + 1,
       customConfig:
         interviewType === 'custom'
           ? {
@@ -585,7 +590,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     type="text"
                     value={customFocusTopics}
                     onChange={(e) => setCustomFocusTopics(e.target.value)}
-                    placeholder="如：Redis分布式锁, Kafka事务, 双写一致性"
+                    placeholder="选填，如：Redis分布式锁, Kafka事务（留空则默认按所选面试官自身重点考察）"
                     className="w-full bg-gray-900 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -686,7 +691,181 @@ export const SetupView: React.FC<SetupViewProps> = ({
           </div>
         </div>
 
-        {/* Step 3: Resume Upload & JD Input */}
+        {/* Step 3: Interview Rounds & Decision Mode */}
+        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <Sliders className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-sm font-semibold text-white">
+              步骤 3：设定考核轮次与决策方式
+            </h3>
+          </div>
+
+          {/* Mode Switcher Tabs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+            <button
+              type="button"
+              onClick={() => setRoundsMode('fixed')}
+              className={`flex items-start p-3.5 rounded-2xl border text-left transition-all ${
+                roundsMode === 'fixed'
+                  ? 'bg-indigo-950/40 border-indigo-500/70 shadow-lg shadow-indigo-950/30'
+                  : 'bg-gray-950/60 border-gray-800 hover:border-gray-700'
+              }`}
+            >
+              <div className="mr-3 mt-0.5 text-base">🎯</div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className={`text-xs font-semibold ${roundsMode === 'fixed' ? 'text-indigo-300' : 'text-gray-200'}`}>
+                    显式指定轮次 (固定轮次)
+                  </span>
+                  {roundsMode === 'fixed' && (
+                    <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full border border-indigo-500/30">
+                      已启用
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  设定固定的专业考核题数，由面试官严格按轮次深入考察后转入反问。
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setRoundsMode('adaptive')}
+              className={`flex items-start p-3.5 rounded-2xl border text-left transition-all ${
+                roundsMode === 'adaptive'
+                  ? 'bg-emerald-950/40 border-emerald-500/70 shadow-lg shadow-emerald-950/30'
+                  : 'bg-gray-950/60 border-gray-800 hover:border-gray-700'
+              }`}
+            >
+              <div className="mr-3 mt-0.5 text-base">✨</div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className={`text-xs font-semibold ${roundsMode === 'adaptive' ? 'text-emerald-300' : 'text-gray-200'}`}>
+                    大模型自主研判 (AI 动态深度)
+                  </span>
+                  {roundsMode === 'adaptive' && (
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-500/30">
+                      智能推荐
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  影子观察员后台评估回答饱和度与考点覆盖（最少 3 题），画像充分即智能收尾。
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {/* Mode-specific Controls */}
+          {roundsMode === 'fixed' ? (
+            <div className="bg-gray-950/50 border border-gray-800/80 rounded-2xl p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-300 font-medium">核心考核题数：</span>
+                  <span className="text-sm font-bold text-indigo-400 bg-indigo-950/50 px-2.5 py-0.5 rounded-lg border border-indigo-800/40">
+                    {fixedQuestionCount} 题
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: '快速摸底 (3题)', value: 3 },
+                    { label: '标准考核 (5题)', value: 5 },
+                    { label: '深度攻坚 (8题)', value: 8 },
+                    { label: '专家详询 (12题)', value: 12 },
+                    { label: '全量轮巡 (16题)', value: 16 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      onClick={() => setFixedQuestionCount(preset.value)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                        fixedQuestionCount === preset.value
+                          ? 'bg-indigo-600 text-white border-indigo-500'
+                          : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-700'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <span className="text-[11px] text-gray-500">2题</span>
+                <input
+                  type="range"
+                  min={2}
+                  max={25}
+                  step={1}
+                  value={fixedQuestionCount}
+                  onChange={(e) => setFixedQuestionCount(Number(e.target.value))}
+                  className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-gray-800 rounded-lg"
+                />
+                <span className="text-[11px] text-gray-500">25题</span>
+              </div>
+
+              <p className="text-[11px] text-gray-500 mt-2.5">
+                💡 流程规划：破冰自我介绍 ➔ 核心提问 {fixedQuestionCount} 轮 ➔ 候选人反问与复盘结语（预计总交互 {fixedQuestionCount + 2} 次）。
+              </p>
+            </div>
+          ) : (
+            <div className="bg-gray-950/50 border border-gray-800/80 rounded-2xl p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-300 font-medium">安全保护上限 (防死循环)：</span>
+                  <span className="text-sm font-bold text-emerald-400 bg-emerald-950/50 px-2.5 py-0.5 rounded-lg border border-emerald-800/40">
+                    最多 {adaptiveMaxQuestions} 题
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: '标准 (8题)', value: 8 },
+                    { label: '充分 (12题)', value: 12 },
+                    { label: '深度 (15题)', value: 15 },
+                    { label: '极限探索 (20题)', value: 20 },
+                    { label: '超长马拉松 (30题)', value: 30 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      onClick={() => setAdaptiveMaxQuestions(preset.value)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                        adaptiveMaxQuestions === preset.value
+                          ? 'bg-emerald-600 text-white border-emerald-500'
+                          : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-700'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <span className="text-[11px] text-gray-500">4题</span>
+                <input
+                  type="range"
+                  min={4}
+                  max={30}
+                  step={1}
+                  value={adaptiveMaxQuestions}
+                  onChange={(e) => setAdaptiveMaxQuestions(Number(e.target.value))}
+                  className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-gray-800 rounded-lg"
+                />
+                <span className="text-[11px] text-gray-500">30题</span>
+              </div>
+
+              <p className="text-[11px] text-gray-500 mt-2.5">
+                💡 机制保护：系统设有【最低 3 题】保底考察，避免草率下定论；一旦大模型研判能力画像已饱和或边界探明，将提前优雅收尾；最长不超过 {adaptiveMaxQuestions} 题。
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Step 4: Resume Upload & JD Input */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Resume Box */}
           <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 flex flex-col">
@@ -694,7 +873,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
               <div className="flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-blue-400" />
                 <label className="text-sm font-semibold text-gray-200">
-                  候选人简历 (支持 PDF/Word/TXT 上传)
+                  步骤 4：候选人简历 (支持 PDF/Word/TXT 上传)
                 </label>
               </div>
 

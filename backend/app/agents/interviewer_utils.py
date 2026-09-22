@@ -10,7 +10,8 @@ from typing import List
 
 from app.agents.state import InterviewState
 
-QUESTION_LIMIT = "\n【提问限制】：本轮只围绕一个核心问题提问，最多追加一个简短的补充问（合计不超过 2 个问题点），严禁一次抛出三连问或问题清单。"
+QUESTION_LIMIT = ("\n【提问限制】：本轮只围绕一个核心问题提问，最多追加一个简短的补充问（合计不超过 2 个问题点），"
+                  "严禁一次抛出三连问或问题清单；一个问题内部也不要再塞 2-3 个并列子问（如'X 是多少？Y 怎么做？Z 为什么？'）。")
 
 
 def _language_line(state: InterviewState) -> str:
@@ -25,7 +26,8 @@ def _language_line(state: InterviewState) -> str:
 def _format_line() -> str:
     """每轮强制口语化输出：抑制 markdown 加粗、编号列表、引号包裹等书面残留。"""
     return ("\n【输出格式】：你的发言是面试现场说出来的话，纯口语输出——严禁 markdown 加粗/标题/列表/代码反引号，"
-            "严禁用'第一/第二'或①②③编号组织发言，严禁把整段发言用引号包裹，严禁输出空白内容。")
+            "严禁用'第一/第二'或①②③编号组织发言，严禁把整段发言用引号包裹，严禁输出空白内容。"
+            "输出前自检：正文中'？'不得超过 2 个，超了就合并或删掉；除技术专有名词外不得夹杂英文单词。")
 
 
 def covered_topics_line(state: InterviewState) -> str:
@@ -93,12 +95,18 @@ def build_deep_dive_instruction(state: InterviewState, role_line: str) -> str:
     mode = state.get("interview_mode") or {}
     difficulty = mode.get("difficulty") or state.get("difficulty", "standard")
     seniority = mode.get("seniority") or state.get("seniority", "senior")
-    # 轮转逃生口：同一主题已被连续深挖多轮时，允许面试官收束换题，避免考点被困
+    # 轮转逃生口：同一主题被连续深挖时，允许面试官换切入层面或收束换题，避免考点被困
     if topic_depth >= 3:
         rotation_line = (
-            f"\n注意：主题【{current_topic}】已被连续考察多轮（第 {topic_depth} 层）。"
-            f"若你觉得再挖下去边际价值不高，可以用一句收束语结束该主题，"
-            f"转向紧密相关的新子方向或清单中的下一个知识点。"
+            f"\n注意：主题【{current_topic}】已被连续考察 {topic_depth} 层，本轮必须做出改变："
+            f"要么换一个明显不同的切入层面（从实现细节换到权衡取舍/工程落地/个人决策），"
+            f"要么用一句收束语结束该主题、转向清单中的下一个知识点。"
+            f"严禁再以同样的问法继续追问同一信息点。"
+        )
+    elif topic_depth >= 2:
+        rotation_line = (
+            f"\n注意：主题【{current_topic}】已深挖到第 {topic_depth} 层。本轮继续时必须换一个切入层面，"
+            f"并检查你的问题是否与已问过的内容重复；若已无新信息增量，直接收束换题。"
         )
     else:
         rotation_line = ""
@@ -109,7 +117,10 @@ def build_deep_dive_instruction(state: InterviewState, role_line: str) -> str:
         f"候选人刚才回答是：'{latest_input}'。\n"
         f"提问要求：紧扣当前主题【{current_topic}】向下深挖一层，不要整体更换主题；"
         f"深挖时换一个切入层面（底层原理 / 边界与故障场景 / 方案权衡），"
-        f"不要连续多轮只重复索要量化数据；追问深度须匹配难度与职级（{difficulty} / {seniority}）。"
+        f"不要连续多轮只重复索要量化数据；追问必须带来新的信息增量，严禁换说法重复已问过的信息点；"
+        f"追问深度须匹配难度与职级（{difficulty} / {seniority}）。"
+        f"候选人明确表示不了解、没接触过时，简短确认后立即降维（'如果让你来设计，会考虑哪些因素？'）或换考点，"
+        f"严禁当场讲解正确答案——你是评估者不是老师。"
         f"{rotation_line}\n"
         f"{role_line}"
         f"{_language_line(state)}{_format_line()}"
@@ -127,7 +138,8 @@ def build_probe_instruction(state: InterviewState, role_line: str) -> str:
         f"【系统决策：引导补充】候选人的回答方向大致正确但偏浅（满足度 {last_score:.2f}），给一次补充细节的机会。\n"
         f"当前考查主题：【{current_topic}】。候选人刚才回答是：'{latest_input}'。\n"
         f"提问要求：只做一次针对性引导追问，帮候选人把关键细节讲透（不要连珠炮式提问、不要更换主题）；"
-        f"追问深度须匹配难度与职级设定，候选人明显接不住时主动降一档或给提示。\n"
+        f"追问深度须匹配难度与职级设定，候选人明显接不住时主动降一档或给提示；"
+        f"候选人承认不了解时简短确认后降维或换考点，严禁当场讲解标准答案。\n"
         f"{hint_line}\n"
         f"{role_line}"
         f"{_language_line(state)}{_format_line()}"
@@ -164,7 +176,8 @@ def build_switch_instruction(state: InterviewState, role_line: str) -> str:
             f"【系统决策：立即切换考点】候选人对上一考点未能有效作答（回答状态：{status or 'unknown'}，满足度 {last_score:.2f}）。\n"
             f"候选人刚才的回答：'{latest_input}'。\n"
             f"提问要求：不要讲解正确答案、不要过度安慰、不要在该考点上继续纠缠；"
-            f"用一句简短自然的话收束（收束语要呼应他刚才这段回答的实际内容，如“好，这块我们先过”），然后立即{hint_line}\n"
+            f"用一句简短自然的话收束（收束语必须呼应他刚才这段回答的实际内容，且每次换一种说法，"
+            f"严禁反复使用同一句收束套话如'好，这块我们先过'），然后立即{hint_line}\n"
             f"{covered}"
             f"{focus_rule}"
             f"{role_line}"

@@ -8,8 +8,15 @@ from app.agents.prompts import (
     COACH_AGENT_PROMPT,
 )
 from app.agents.llm import llm_service
+from app.services.prompt_recorder import prompt_recorder
 
 logger = logging.getLogger(__name__)
+
+# JSON 输出解析失败时的纠正提示（重试时追加到 system prompt 末尾）
+_JSON_RETRY_NOTE = (
+    "\n【重要】你上一次的输出无法解析为合法 JSON。请重新输出：必须是单一 JSON 对象"
+    "（可用 ```json 代码块包裹），块外无任何文字，块内无注释、无省略号、无尾随逗号，所有字段完整。"
+)
 
 INTERVIEWER_NAME_LABELS = {
     "orchestrator": "主考官",
@@ -66,31 +73,70 @@ class EvaluatorAgent:
 
         prompt = "请根据上述问答纪录和影子观察员日志，严格依据标准Rubric进行客观评分与证据提取，输出纯JSON格式。"
 
-        try:
-            resp = await llm_service.invoke(
-                [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
-                llm_config=state.get("llm_config"),
+        # JSON 解析失败带纠正提示重试一次，避免静默落盘模板兜底报告
+        parsed = None
+        raw_response = ""
+        last_err: Exception | None = None
+        for attempt in range(2):
+            try:
+                resp = await llm_service.invoke(
+                    [SystemMessage(content=sys_msg + ("" if attempt == 0 else _JSON_RETRY_NOTE)),
+                     HumanMessage(content=prompt)],
+                    llm_config=state.get("llm_config"),
+                )
+                raw_response = resp.content
+                content = resp.content.strip()
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0].strip()
+
+                parsed = json.loads(content)
+                break
+            except Exception as e:
+                last_err = e
+                parsed = None
+                if attempt == 0:
+                    logger.warning(f"EvaluatorAgent output unparseable, retrying once: {e}")
+
+        if parsed is None:
+            logger.error(f"EvaluatorAgent failed to invoke LLM after retry: {last_err}. Generating fallback evaluation.")
+            fallback = self._fallback_evaluation(state)
+            prompt_log = prompt_recorder.build_prompt_log(
+                session_id=state.get("session_id"),
+                node="evaluator",
+                call_type="evaluation_report",
+                system_prompt=sys_msg,
+                user_prompt=prompt,
+                response=json.dumps(fallback, ensure_ascii=False),
+                round_index=state.get("round_count", 0),
+                stage="conclusion",
+                turn_id=state.get("turn_id"),
             )
-            content = resp.content.strip()
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+            fallback["_prompt_log"] = prompt_log
+            return fallback
 
-            parsed = json.loads(content)
+        # Enforce schema integrity
+        if "radar_scores" not in parsed:
+            parsed["radar_scores"] = self._default_radar_scores()
+        if "confidence_score" not in parsed:
+            parsed["confidence_score"] = 0.85
+        if "rubric_id" not in parsed:
+            parsed["rubric_id"] = self.RUBRIC_ID
 
-            # Enforce schema integrity
-            if "radar_scores" not in parsed:
-                parsed["radar_scores"] = self._default_radar_scores()
-            if "confidence_score" not in parsed:
-                parsed["confidence_score"] = 0.85
-            if "rubric_id" not in parsed:
-                parsed["rubric_id"] = self.RUBRIC_ID
-
-            return parsed
-        except Exception as e:
-            logger.error(f"EvaluatorAgent failed to invoke LLM: {e}. Generating fallback evaluation.")
-            return self._fallback_evaluation(state)
+        prompt_log = prompt_recorder.build_prompt_log(
+            session_id=state.get("session_id"),
+            node="evaluator",
+            call_type="evaluation_report",
+            system_prompt=sys_msg,
+            user_prompt=prompt,
+            response=raw_response,
+            round_index=state.get("round_count", 0),
+            stage="conclusion",
+            turn_id=state.get("turn_id"),
+        )
+        parsed["_prompt_log"] = prompt_log
+        return parsed
 
     def _default_radar_scores(self) -> Dict[str, float]:
         return {
@@ -114,30 +160,43 @@ class EvaluatorAgent:
         scaled = round(avg_satisfaction * 10.0, 1)
         radar["technical_depth"] = max(5.0, min(9.5, scaled))
 
+        # 兜底报告基于本场真实观察数据推断，不注入任何虚构的问答细节
+        first_log = shadow_logs[0] if shadow_logs else {}
         return {
-            "overall_summary": "候选人基础概念掌握较为扎实，技术沟通逻辑较为连贯。在核心分布式系统设计与项目复盘上有清晰的切入点，针对高并发场景下的数据一致性容灾机制和STAR细节量化仍有较大提升空间。",
+            "overall_summary": "本场评估基于面试过程的观察数据推断：候选人整体作答连贯，但在被追问的细节处暴露出量化数据不足与边界场景思考偏浅的问题。此为兜底评估，建议重新生成获取逐题精评。",
             "match_verdict": "建议通过",
             "radar_scores": radar,
             "strengths": [
-                "对技术原理有较好的自主思考，回答不局限于死记硬背",
-                "沟通态度专业真诚，能够快速理解面试官的追问意图",
-                "具有一定的工程大局观与架构取舍意识",
+                "回答态度专业真诚，能跟随追问调整表达",
+                "对自身项目有基本复盘意识",
             ],
             "weaknesses": [
-                "项目阐述中缺乏明确的量化指标支撑（如QPS/时延对比）",
-                "对分布式系统极端故障场景下的容灾补偿思考略显单薄",
+                "回答中主动给出的量化指标与测量口径不足",
+                "对极端场景与边界条件的思考偏浅",
             ],
-            "confidence_score": 0.86,
+            "confidence_score": 0.5,
             "rubric_id": self.RUBRIC_ID,
             "detailed_reviews": [
                 {
+                    "round": i + 1,
+                    "interviewer": str(log.get("interviewer", "面试官")),
+                    "question": str(log.get("question", ""))[:120],
+                    "candidate_answer": str(log.get("candidate_answer", ""))[:120],
+                    "analysis": f"观察员满足度 {log.get('satisfaction_score', 'N/A')}，{log.get('answer_status', '状态未知')}；缺少逐题精评（兜底报告）。",
+                    "evidence_quote": "",
+                    "score": round(float(log.get("satisfaction_score", 0.7)) * 10, 1),
+                }
+                for i, log in enumerate(shadow_logs[:5])
+                if isinstance(log, dict)
+            ] or [
+                {
                     "round": 1,
-                    "interviewer": "技术面试官",
-                    "question": "高可用系统架构与缓存一致性方案",
-                    "candidate_answer": "采用了分布式锁加延迟双删处理...",
-                    "analysis": "方案符合基础规范，但未深入分析极端网络分区下的数据不一致兜底机制。",
-                    "evidence_quote": "分布式锁加延迟双删",
-                    "score": 7.5,
+                    "interviewer": "面试官",
+                    "question": str(first_log.get("question", ""))[:120] or "（无观察数据）",
+                    "candidate_answer": "",
+                    "analysis": "本场无可用观察数据，无法生成逐题精评。",
+                    "evidence_quote": "",
+                    "score": 7.0,
                 }
             ],
         }
@@ -174,36 +233,39 @@ class CoachAgent:
 
         prompt = "请基于上述评估结论，为候选人生成专业的逐题优化示范、能力攻坚学习计划、7天训练日历和专项打靶卡片，输出纯JSON格式。"
 
-        try:
-            resp = await llm_service.invoke(
-                [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
-                llm_config=state.get("llm_config"),
-            )
-            content = resp.content.strip()
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+        parsed = None
+        raw_response = ""
+        last_err: Exception | None = None
+        for attempt in range(2):
+            try:
+                resp = await llm_service.invoke(
+                    [SystemMessage(content=sys_msg + ("" if attempt == 0 else _JSON_RETRY_NOTE)),
+                     HumanMessage(content=prompt)],
+                    llm_config=state.get("llm_config"),
+                )
+                raw_response = resp.content
+                content = resp.content.strip()
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0].strip()
 
-            parsed = json.loads(content)
+                parsed = json.loads(content)
+                break
+            except Exception as e:
+                last_err = e
+                parsed = None
+                if attempt == 0:
+                    logger.warning(f"CoachAgent output unparseable, retrying once: {e}")
 
-            # Ensure essential keys
-            if "seven_day_roadmap" not in parsed or not parsed["seven_day_roadmap"]:
-                parsed["seven_day_roadmap"] = _get_default_roadmap()
-            if "drill_cards" not in parsed or not parsed["drill_cards"]:
-                parsed["drill_cards"] = _get_default_drill_cards(weaknesses)
-            if "learning_plan" not in parsed or not parsed["learning_plan"]:
-                parsed["learning_plan"] = self._default_learning_plan()
-
-            return parsed
-        except Exception as e:
-            logger.error(f"CoachAgent failed to invoke LLM: {e}. Generating fallback coaching.")
-            return {
+        if parsed is None:
+            logger.error(f"CoachAgent failed to invoke LLM after retry: {last_err}. Generating fallback coaching.")
+            fallback = {
                 "enriched_reviews": [
                     {
                         "round": r.get("round", 1),
-                        "better_answer_sample": "【优化示范回答】：首先明确业务对一致性的容忍度；其次说明通过 Redisson 守护线程续期保证锁安全；再结合 Canal 增量同步 Binlog 做最终一致性保障与异步对账，形成闭环。",
-                        "key_takeaway": "回答高并发题牢记四步法：业务约束 -> 核心机制 -> 极端容灾 -> 量化成效。",
+                        "better_answer_sample": "【优化示范回答】：先给出明确结论，再按'当时约束 -> 采用的方案与理由 -> 潜在风险与防御 -> 实际结果与量化数据'的结构完整复述一遍，补充上一轮没讲到的边界情况。",
+                        "key_takeaway": "回答任何问题先给结论再展开，主动补齐边界场景与量化证据。",
                     }
                     for r in reviews
                 ],
@@ -211,6 +273,41 @@ class CoachAgent:
                 "seven_day_roadmap": _get_default_roadmap(),
                 "drill_cards": _get_default_drill_cards(weaknesses),
             }
+            prompt_log = prompt_recorder.build_prompt_log(
+                session_id=state.get("session_id"),
+                node="coach",
+                call_type="coach_advice",
+                system_prompt=sys_msg,
+                user_prompt=prompt,
+                response=json.dumps(fallback, ensure_ascii=False),
+                round_index=state.get("round_count", 0),
+                stage="conclusion",
+                turn_id=state.get("turn_id"),
+            )
+            fallback["_prompt_log"] = prompt_log
+            return fallback
+
+        # Ensure essential keys
+        if "seven_day_roadmap" not in parsed or not parsed["seven_day_roadmap"]:
+            parsed["seven_day_roadmap"] = _get_default_roadmap()
+        if "drill_cards" not in parsed or not parsed["drill_cards"]:
+            parsed["drill_cards"] = _get_default_drill_cards(weaknesses)
+        if "learning_plan" not in parsed or not parsed["learning_plan"]:
+            parsed["learning_plan"] = self._default_learning_plan()
+
+        prompt_log = prompt_recorder.build_prompt_log(
+            session_id=state.get("session_id"),
+            node="coach",
+            call_type="coach_advice",
+            system_prompt=sys_msg,
+            user_prompt=prompt,
+            response=raw_response,
+            round_index=state.get("round_count", 0),
+            stage="conclusion",
+            turn_id=state.get("turn_id"),
+        )
+        parsed["_prompt_log"] = prompt_log
+        return parsed
 
     def _default_learning_plan(self) -> List[Dict[str, Any]]:
         return [
@@ -229,33 +326,33 @@ def _get_default_roadmap() -> List[Dict[str, Any]]:
     return [
         {
             "day": "Day 1-2",
-            "phase": "核心理论与底层原理漏洞补齐",
-            "focus_topics": ["分布式事务与最终一致性", "MySQL MVCC 与锁竞争机制"],
+            "phase": "薄弱考点梳理与概念补齐",
+            "focus_topics": ["面试中暴露的核心薄弱知识点"],
             "action_items": [
-                "研读 Canal + RocketMQ 增量事务消息机制并画出时序图",
-                "复习 ReadView 与 UndoLog 链条生成逻辑，攻克高并发脏读细节",
+                "对照逐题复盘，把答得不扎实的问题重新完整推演一遍",
+                "整理每个薄弱点背后的底层原理与适用边界",
             ],
-            "expected_outcome": "能够完整推演网络分区下的一致性兜底方案",
+            "expected_outcome": "能脱离提示完整讲清薄弱考点的原理与取舍",
         },
         {
             "day": "Day 3-4",
-            "phase": "高并发系统设计与极限边界攻坚",
-            "focus_topics": ["极端限流与熔断降级", "多级缓存一致性对账"],
+            "phase": "项目复盘与量化表达刻意练习",
+            "focus_topics": ["STAR 结构化表达", "量化指标与证据链"],
             "action_items": [
-                "设计万级 QPS 秒杀风控漏斗模型，标注各级过滤比例",
-                "产出系统架构权衡 Trade-off 决策清单",
+                "把简历上两个核心项目重构成 S-T-A-R 结构卡片",
+                "为每个项目补充可信的量化结果及其测量口径",
             ],
-            "expected_outcome": "回答架构设计题具备全局指标量化与容灾意识",
+            "expected_outcome": "项目回答紧凑有力、数据有出处",
         },
         {
             "day": "Day 5-6",
-            "phase": "STAR 法则情境表达与量化复盘刻意练习",
-            "focus_topics": ["STAR 四步表达法", "冲突化解与向上管理"],
+            "phase": "边界场景与权衡思维强化",
+            "focus_topics": ["极端场景推演", "方案 Trade-off 论证"],
             "action_items": [
-                "将主导的2个核心项目重构为标准的 S-T-A-R 结构卡片",
-                "提炼出明确的量化成果指标（如延迟降低40%、故障率压降至0.01%）",
+                "针对薄弱方向自拟 3 个极端场景题并限时作答",
+                "每个方案给出至少一组替代方案的对比与选择理由",
             ],
-            "expected_outcome": "行为面试回答紧凑有力、数据详实",
+            "expected_outcome": "面对追问能主动给出边界与权衡而非单一口径",
         },
         {
             "day": "Day 7",
@@ -264,7 +361,7 @@ def _get_default_roadmap() -> List[Dict[str, Any]]:
             "action_items": [
                 "在本平台重新发起一场全真模拟面试并对比雷达变化",
             ],
-            "expected_outcome": "六维雷达综合评分达到8.5分以上",
+            "expected_outcome": "六维雷达综合评分较上次提升",
         },
     ]
 
@@ -284,10 +381,10 @@ def _get_default_drill_cards(weaknesses: List[str]) -> List[Dict[str, Any]]:
     if not cards:
         cards.append({
             "id": "drill_1",
-            "weakness_title": "专项打靶：分布式一致性与容灾对账",
-            "concept_summary": "利用 Canal 监听 Binlog 投递 MQ 异步更新缓存，结合 TCC 或对账定时任务做最终兜底。",
-            "interview_tips": "强调异步双删不可靠的极端边界，展现成熟的大厂工程认知。",
-            "sample_drill_question": "在跨机房网络延迟严重抖动时，如何保证 MySQL 与 Redis 之间数据不会产生永久性脏数据？",
+            "weakness_title": "专项打靶：核心薄弱点回归",
+            "concept_summary": "回到本场面试中暴露最明显的一个薄弱点，补齐其底层机制、适用边界与常见误区的理解。",
+            "interview_tips": "作答时先给结论再展开：情境约束 -> 方案选型与对比 -> 异常防御 -> 真实量化成果。",
+            "sample_drill_question": "如果把本场面试中你回答得最勉强的那道题重新问一遍，你会怎么完整作答？",
         })
     return cards
 
@@ -307,9 +404,11 @@ async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
     """
     # 1. Objective evaluation
     evaluation = await evaluator_agent.evaluate(state)
+    eval_prompt_log = evaluation.pop("_prompt_log", None)
 
     # 2. Tailored coaching
     coaching = await coach_agent.coach(state, evaluation)
+    coach_prompt_log = coaching.pop("_prompt_log", None)
 
     # 3. Merge detailed reviews with coaching enhancements
     detailed_reviews = evaluation.get("detailed_reviews", [])
@@ -339,6 +438,8 @@ async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
                 rev_copy["key_takeaway"] = "回答问题紧扣 STAR 结构与工程 Trade-off。"
         final_reviews.append(rev_copy)
 
+    prompt_logs = [p for p in (eval_prompt_log, coach_prompt_log) if p]
+
     # 4. Final aggregate report
     report: Dict[str, Any] = {
         "overall_summary": evaluation.get("overall_summary", ""),
@@ -352,6 +453,7 @@ async def generate_evaluation_report(state: InterviewState) -> Dict[str, Any]:
         "learning_plan": coaching.get("learning_plan", []),
         "seven_day_roadmap": coaching.get("seven_day_roadmap", _get_default_roadmap()),
         "drill_cards": coaching.get("drill_cards", _get_default_drill_cards(evaluation.get("weaknesses", []))),
+        "prompt_logs": prompt_logs,
     }
 
     return report
