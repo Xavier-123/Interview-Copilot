@@ -187,9 +187,32 @@ async def shadow_observer_node(state: InterviewState) -> dict:
                 return t
         return None
 
+    def _consecutive_weak_probes(state: InterviewState, topic: str) -> bool:
+        """同一主题最近两轮均为引导补充（PROBE_WEAKNESS）且满足度都偏低（<0.65）时返回 True。"""
+        logs = [log for log in state.get("evaluation_logs") or [] if isinstance(log, dict)]
+        if len(logs) < 2:
+            return False
+        last_two = logs[-2:]
+        for log in last_two:
+            if log.get("dig_action") != "PROBE_WEAKNESS":
+                return False
+            try:
+                if float(log.get("satisfaction_score", 1.0)) >= 0.65:
+                    return False
+            except (TypeError, ValueError):
+                return False
+        return True
+
     switch_reason = None
     if answer_status == "unknown" or satisfaction_score < 0.5:
         # 答不上来 / 答得很差：直接切换下一个知识点，并清空追问线索防止面试官继续纠缠
+        new_depth = 1
+        dig_action = "SWITCH_TOPIC"
+        switch_reason = "failed"
+        follow_up_hint = None
+        target_topic = next_topic_hint or _next_focus_topic() or extracted_topic or active_topic
+    elif _consecutive_weak_probes(state, active_topic):
+        # 同一考点连续两轮引导补充仍未见起色：强制换题，避免对弱候选人原地反复施压
         new_depth = 1
         dig_action = "SWITCH_TOPIC"
         switch_reason = "failed"
@@ -202,11 +225,12 @@ async def shadow_observer_node(state: InterviewState) -> dict:
         target_topic = active_topic
         follow_up_hint = break_routine_hint or "识别到背诵模板套路，请推翻原有方案假设或提出极端线上故障场景打破其准备好的八股说辞"
     elif satisfaction_score > 0.8:
-        if prior_depth < 5:
+        if prior_depth < 4:
             new_depth = prior_depth + 1
             dig_action = "DEEP_DIVE"
             target_topic = active_topic
         else:
+            # 同一主题已深挖满 3 层：无论回答多好都强制换题，保证考点广度
             new_depth = 1
             dig_action = "SWITCH_TOPIC"
             switch_reason = "exhausted"

@@ -98,10 +98,9 @@ def build_deep_dive_instruction(state: InterviewState, role_line: str) -> str:
     # 轮转逃生口：同一主题被连续深挖时，允许面试官换切入层面或收束换题，避免考点被困
     if topic_depth >= 3:
         rotation_line = (
-            f"\n注意：主题【{current_topic}】已被连续考察 {topic_depth} 层，本轮必须做出改变："
-            f"要么换一个明显不同的切入层面（从实现细节换到权衡取舍/工程落地/个人决策），"
-            f"要么用一句收束语结束该主题、转向清单中的下一个知识点。"
-            f"严禁再以同样的问法继续追问同一信息点。"
+            f"\n注意：主题【{current_topic}】已被连续考察 {topic_depth} 层，这是最后一层："
+            f"除非你提出的是一个明显不同的新切入层面，否则必须用一句收束语结束该主题、"
+            f"转向清单中的下一个知识点。严禁再以同样的问法继续追问同一信息点。"
         )
     elif topic_depth >= 2:
         rotation_line = (
@@ -112,7 +111,7 @@ def build_deep_dive_instruction(state: InterviewState, role_line: str) -> str:
         rotation_line = ""
     return (
         f"【系统决策：深入挖掘】候选人刚才的回答表现良好（满足度 {last_score:.2f} > 0.8）。\n"
-        f"当前考查主题：【{current_topic}】，当前挖掘深度：第 {topic_depth}/5 层。"
+        f"当前考查主题：【{current_topic}】，当前挖掘深度：第 {topic_depth}/4 层。"
         f"{hint_line}\n"
         f"候选人刚才回答是：'{latest_input}'。\n"
         f"提问要求：紧扣当前主题【{current_topic}】向下深挖一层，不要整体更换主题；"

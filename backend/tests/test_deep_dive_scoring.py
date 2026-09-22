@@ -223,7 +223,7 @@ class TestDeepDiveScoring(unittest.IsolatedAsyncioTestCase):
             args = mock_invoke.call_args[0][0]
             human_msg = args[1].content
             self.assertIn("深入挖掘", human_msg)
-            self.assertIn("3/5", human_msg)
+            self.assertIn("3/4", human_msg)
 
 if __name__ == "__main__":
     unittest.main()

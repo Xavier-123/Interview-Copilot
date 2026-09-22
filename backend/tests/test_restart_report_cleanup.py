@@ -54,6 +54,10 @@ class TestRestartReportCleanup(unittest.IsolatedAsyncioTestCase):
             )
             sid = state["session_id"]
             await mgr.start_session(sid)
+            # 模拟达到 3 轮门槛
+            st = await mgr._ensure_state(sid)
+            st["round_count"] = 3
+            await mgr._sync_state_to_db(sid, st)
 
             # 第一轮结束并生成报告
             with patch("app.services.session_manager.generate_evaluation_report", new_callable=AsyncMock) as gen, \
@@ -87,13 +91,16 @@ class TestRestartReportCleanup(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(detail.get("report"))
 
             # 4. 历史列表不再显示 has_report
-            history = await fresh_mgr.get_history()
+            history = await fresh_mgr.get_history(min_rounds=0, auto_cleanup=False)
             self.assertFalse(
                 next(h for h in history if h["session_id"] == sid)["has_report"],
                 "重开后历史页仍显示 has_report=true",
             )
 
             # ── 新一轮重新结束：应生成全新报告，不触发唯一键冲突 ──
+            st = await mgr._ensure_state(sid)
+            st["round_count"] = 3
+            await mgr._sync_state_to_db(sid, st)
             with patch("app.services.session_manager.generate_evaluation_report", new_callable=AsyncMock) as gen2, \
                  patch("app.services.session_manager.audit_service.audit_session", new_callable=AsyncMock):
                 gen2.side_effect = lambda st: _fake_report("二")
@@ -130,6 +137,9 @@ class TestRestartReportCleanup(unittest.IsolatedAsyncioTestCase):
             )
             sid = state["session_id"]
             await mgr.start_session(sid)
+            st = await mgr._ensure_state(sid)
+            st["round_count"] = 3
+            await mgr._sync_state_to_db(sid, st)
 
         with patch("app.services.session_manager.generate_evaluation_report", new_callable=AsyncMock) as gen, \
              patch("app.services.session_manager.audit_service.audit_session", new_callable=AsyncMock):

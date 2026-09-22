@@ -47,6 +47,10 @@ export function App() {
   // 本场实际出场的面试官角色 key（含主考官），面试官席位只展示这些成员
   const [participantRoles, setParticipantRoles] = useState<string[]>([]);
 
+  // 面试管理页的上次停留 tab 与复盘勾选，从报告页「返回面试管理」时恢复现场
+  const [interviewsTab, setInterviewsTab] = useState<'calendar' | 'history'>('calendar');
+  const [historySelection, setHistorySelection] = useState<string[]>([]);
+
   // 跨页面传递的模拟面试预填数据（来自简历管理或面试日程）
   const [setupPrefill, setSetupPrefill] = useState<{
     resumeText?: string;
@@ -79,6 +83,7 @@ export function App() {
         if (res.ok) {
           const data = await res.json();
           checkAndNotifyUpcomingSchedules(data.schedules || [], () => {
+            setInterviewsTab('calendar');
             setView('interviews');
           });
         }
@@ -366,6 +371,22 @@ export function App() {
   // 8. Finish Interview & Generate Report
   const handleFinishInterview = async () => {
     if (!sessionId || finishInFlightRef.current) return;
+
+    // 对话轮次不足 3 轮拦截提示
+    if (shadowLogsCount < 3) {
+      const confirmExit = window.confirm(
+        `当前面试仅完成了 ${shadowLogsCount} 轮对话。\n\n系统设定需至少完成 3 轮有效问答方可归档保存与生成复盘战报。\n若此时提前交卷或退出，将不会保存本场记录，是否确认退出？`
+      );
+      if (!confirmExit) return;
+      try {
+        await fetch(`/api/v1/interviews/history/${sessionId}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error('Failed to cleanup aborted session:', err);
+      }
+      handleRestart();
+      return;
+    }
+
     finishInFlightRef.current = true;
     setIsThinking(true);
     try {
@@ -486,6 +507,10 @@ export function App() {
                 onBack={() => setView('home')}
                 onViewReport={handleViewReportFromHistory}
                 onStartMockWithSchedule={handlePrepareForSchedule}
+                initialTab={interviewsTab}
+                onTabChange={setInterviewsTab}
+                selectedHistorySessions={historySelection}
+                onHistorySelectionChange={setHistorySelection}
               />
             )}
 

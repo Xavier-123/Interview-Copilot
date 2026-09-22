@@ -275,10 +275,24 @@ async def finish_and_evaluate(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/history")
-async def get_interview_history():
-    """List all interview history (local single-user mode)."""
-    history = await session_manager.get_history()
+async def get_interview_history(min_rounds: int = 3, auto_cleanup: bool = True):
+    """List all interview history (local single-user mode, default min_rounds >= 3)."""
+    history = await session_manager.get_history(min_rounds=min_rounds, auto_cleanup=auto_cleanup)
     return {"history": history}
+
+@router.post("/history/cleanup-incomplete")
+async def cleanup_incomplete_records(min_rounds: int = 3, older_than_minutes: Optional[int] = None):
+    """Clean up mock interview records with fewer than min_rounds turns (optionally older than N minutes)."""
+    deleted = await session_manager.cleanup_incomplete_sessions(
+        min_rounds=min_rounds,
+        older_than_minutes=older_than_minutes
+    )
+    return {
+        "status": "success",
+        "deleted": deleted,
+        "min_rounds": min_rounds,
+        "older_than_minutes": older_than_minutes
+    }
 
 @router.post("/history/compare")
 async def compare_interview_sessions(req: CompareRequest):

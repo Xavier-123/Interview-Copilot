@@ -180,9 +180,13 @@ class PromptRecorderService:
         prompt_logs: List[Dict[str, Any]],
         messages: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, str]:
-        """将 Prompt 记录持久化为本地磁盘文件（Markdown 与 JSON）。"""
+        """将 Prompt 记录持久化为本地磁盘文件（Markdown 与 JSON）。仅当轮次 >= 3 时才落盘。"""
         if not prompt_logs:
             return {}
+        # 对话轮次如果明确指定且未满 3 轮，不保存到磁盘
+        if "round_count" in (session_meta or {}) and int((session_meta or {}).get("round_count", 0) or 0) < 3:
+            return {}
+
         try:
             os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
             safe_session_id = "".join(c for c in session_id if c.isalnum() or c in ("-", "_"))
@@ -205,6 +209,53 @@ class PromptRecorderService:
             import logging
             logging.getLogger(__name__).error(f"Failed to save prompt logs to disk: {e}")
             return {}
+
+    def delete_prompts_from_disk(self, session_id: str) -> bool:
+        """从本地磁盘彻底删除指定 session 的 Prompt 镜像文件（Markdown 与 JSON）。"""
+        try:
+            safe_session_id = "".join(c for c in session_id if c.isalnum() or c in ("-", "_"))
+            if not safe_session_id:
+                return False
+            md_path = os.path.join(TRANSCRIPTS_DIR, f"{safe_session_id}_prompts.md")
+            json_path = os.path.join(TRANSCRIPTS_DIR, f"{safe_session_id}_prompts.json")
+            deleted = False
+            for p in (md_path, json_path):
+                if os.path.isfile(p):
+                    try:
+                        os.remove(p)
+                        deleted = True
+                    except OSError:
+                        pass
+            return deleted
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to delete prompt logs from disk for {session_id}: {e}")
+            return False
+
+    def cleanup_orphaned_transcripts(self, valid_session_ids: set) -> int:
+        """
+        清理本地磁盘中所有不属于有效会话集合（或者不足 3 轮）的孤立镜像文件。
+        """
+        if not os.path.exists(TRANSCRIPTS_DIR):
+            return 0
+        deleted_count = 0
+        try:
+            for fname in os.listdir(TRANSCRIPTS_DIR):
+                if not (fname.endswith("_prompts.md") or fname.endswith("_prompts.json")):
+                    continue
+                # 提取 session_id（去掉 _prompts.md 或 _prompts.json）
+                sid = fname.replace("_prompts.md", "").replace("_prompts.json", "")
+                if sid not in valid_session_ids:
+                    fpath = os.path.join(TRANSCRIPTS_DIR, fname)
+                    try:
+                        os.remove(fpath)
+                        deleted_count += 1
+                    except OSError:
+                        pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to cleanup orphaned transcripts: {e}")
+        return deleted_count
 
 
 prompt_recorder = PromptRecorderService()

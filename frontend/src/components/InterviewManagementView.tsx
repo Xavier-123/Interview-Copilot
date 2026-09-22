@@ -41,6 +41,11 @@ interface InterviewManagementViewProps {
   onViewReport: (sessionId: string) => void;
   onStartMockWithSchedule: (schedule: InterviewScheduleItem) => void;
   initialTab?: 'calendar' | 'history';
+  /** tab 切换时上报父级，便于从报告页返回时恢复上次停留的 tab */
+  onTabChange?: (tab: 'calendar' | 'history') => void;
+  /** 复盘列表的受控勾选（跨页面保持勾选），不传则由 HistoryView 内部自持 */
+  selectedHistorySessions?: string[];
+  onHistorySelectionChange?: (ids: string[]) => void;
 }
 
 export const InterviewManagementView: React.FC<InterviewManagementViewProps> = ({
@@ -48,8 +53,16 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   onViewReport,
   onStartMockWithSchedule,
   initialTab = 'calendar',
+  onTabChange,
+  selectedHistorySessions,
+  onHistorySelectionChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'calendar' | 'history'>(initialTab);
+
+  const switchTab = (tab: 'calendar' | 'history') => {
+    setActiveTab(tab);
+    onTabChange?.(tab);
+  };
 
   // Schedules state
   const [schedules, setSchedules] = useState<InterviewScheduleItem[]>([]);
@@ -379,7 +392,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
         {/* Tab Switcher */}
         <div className="flex items-center p-1 rounded-xl bg-gray-900 border border-gray-800 shrink-0">
           <button
-            onClick={() => setActiveTab('calendar')}
+            onClick={() => switchTab('calendar')}
             className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition cursor-pointer ${
               activeTab === 'calendar'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
@@ -396,7 +409,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
           </button>
 
           <button
-            onClick={() => setActiveTab('history')}
+            onClick={() => switchTab('history')}
             className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition cursor-pointer ${
               activeTab === 'history'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-900/40'
@@ -741,6 +754,8 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
             onBack={onBack}
             onViewReport={onViewReport}
             hideBack={true}
+            selectedSessions={selectedHistorySessions}
+            onSelectionChange={onHistorySelectionChange}
           />
         </div>
       )}

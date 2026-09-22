@@ -15,6 +15,7 @@ from app.api.v1.memory import router as memory_router
 from app.api.v1.evolution import router as evolution_router
 from app.api.ws.interview_stream import router as ws_router
 from app.services.reminder_worker import reminder_scheduler_loop
+from app.services.cleanup_worker import cleanup_scheduler_loop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,11 +23,18 @@ async def lifespan(app: FastAPI):
     await init_db()
     # 启动临近面试邮件提醒定时后台轮询 Worker
     reminder_task = asyncio.create_task(reminder_scheduler_loop(interval_seconds=60))
+    # 启动未满 3 轮废弃会话自动清理定时后台 Worker (默认每小时巡检，保护 60 分钟内活跃会话)
+    cleanup_task = asyncio.create_task(cleanup_scheduler_loop())
     yield
     # 应用优雅停机时取消轮询任务
     reminder_task.cancel()
+    cleanup_task.cancel()
     try:
         await reminder_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await cleanup_task
     except asyncio.CancelledError:
         pass
 

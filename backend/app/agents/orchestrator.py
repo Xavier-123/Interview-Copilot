@@ -21,23 +21,25 @@ def _actual_panel(state: InterviewState) -> str:
     selected = cfg.get("selected_interviewers") or []
     labels = cfg.get("persona_labels") or {}
     single_guidance = (
-        "本场为单面试官面试。开场欢迎语控制在两句话内（欢迎 + 邀请自我介绍），"
-        "以本场面试官团队的口吻自然说话；严禁出现'主考官''统筹/流程把控''由另一位XX面试官与你交流'"
-        "等多角色结构话术，严禁预告环节与时长；结语与反问环节也只以本场真实面试官的名义收尾。"
+        "本场为单面试官面试（接下来提问的专业面试官与本欢迎语属于同一场面试，无需引见任何第三方）。"
+        "开场欢迎语控制在两句话内：自然问候 + 邀请自我介绍，不要自称任何头衔（严禁'主考官''主持''统筹流程'），"
+        "不要介绍阵容或转述'将由XX面试官与你交流'（提问的面试官马上就会出现，引见是多余的），"
+        "不要预告环节与时长；结语与反问环节也以本场面试官团队的身份自然收尾，"
+        "严禁出现'几位面试官''我们四位面试官都了解了你'等虚构数量的表述。"
     )
     if selected:
         names = [labels.get(role) or _BUILTIN_ROLE_LABELS.get(role) or role for role in selected]
         if len(names) == 1:
-            return f"{single_guidance}\n【本场实际出场阵容】：主考官（你）+ 唯一专业面试官：{names[0]}"
+            return f"{single_guidance}\n【本场实际出场阵容】：唯一专业面试官：{names[0]}"
         return f"主考官（你，负责主持）+ 专业面试官：{'、'.join(names)}"
     if interview_type == "management":
-        return f"{single_guidance}\n【本场实际出场阵容】：主考官（你）+ 唯一专业面试官：管理面试官"
+        return f"{single_guidance}\n【本场实际出场阵容】：唯一专业面试官：管理面试官"
     if interview_type in ("behavioral", "hr"):
-        return f"{single_guidance}\n【本场实际出场阵容】：主考官（你）+ 唯一专业面试官：HR面试官"
+        return f"{single_guidance}\n【本场实际出场阵容】：唯一专业面试官：HR面试官"
     if interview_type == "programmer":
-        return f"{single_guidance}\n【本场实际出场阵容】：主考官（你）+ 唯一专业面试官：程序员面试官"
+        return f"{single_guidance}\n【本场实际出场阵容】：唯一专业面试官：程序员面试官"
     if interview_type == "technical":
-        return f"{single_guidance}\n【本场实际出场阵容】：主考官（你）+ 唯一专业面试官：技术面试官"
+        return f"{single_guidance}\n【本场实际出场阵容】：唯一专业面试官：技术面试官"
     return "主考官（你，负责主持）+ 技术面试官、HR面试官先后出场"
 
 

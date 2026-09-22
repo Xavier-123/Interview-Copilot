@@ -573,6 +573,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="按面试官批量模拟")
     parser.add_argument("--iteration", default="v1", help="迭代轮次标识（输出子目录）")
     parser.add_argument("--only", default="", help="逗号分隔的 interviewer id")
+    parser.add_argument("--runs", default="", help="逗号分隔的场次号（1-based，如 1,2），默认全部")
     parser.add_argument("--jobs", type=int, default=2, help="并发数")
     parser.add_argument("--max-answers", type=int, default=13,
                         help="每场候选人回答上限（≥10轮正式问答+开场+反问收尾）")
@@ -624,6 +625,7 @@ async def main() -> None:
     log(f"候选人 LLM: model={settings.LLM_MODEL} base_url={settings.LLM_BASE_URL}", logfile)
 
     only = {x.strip() for x in args.only.split(",") if x.strip()}
+    run_filter = {int(x) for x in args.runs.split(",") if x.strip().isdigit()}
     interviewers = [iv for iv in INTERVIEWERS if not only or iv["id"] in only]
     if not interviewers:
         log("没有匹配的面试官", logfile)
@@ -632,6 +634,8 @@ async def main() -> None:
     tasks: list[tuple[dict, int, dict]] = []
     for iv in interviewers:
         for run_idx, run_cfg in enumerate(iv["runs"]):
+            if run_filter and (run_idx + 1) not in run_filter:
+                continue
             tasks.append((iv, run_idx, run_cfg))
 
     sem = asyncio.Semaphore(max(1, args.jobs))

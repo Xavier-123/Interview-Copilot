@@ -3,14 +3,14 @@ import copy
 import uuid
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from sqlalchemy import select, desc, delete, func
 from sqlalchemy.orm import selectinload
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.models.db import AsyncSessionLocal
 from app.models.interview import InterviewSessionModel, InterviewMessageModel, InterviewReportModel, InterviewPromptLogModel
-from app.models.architecture import EvolutionCandidateModel
+from app.models.architecture import EvolutionCandidateModel, EvidenceItemModel
 from app.models.persona import InterviewerPersona
 from app.agents.state import InterviewState
 from app.agents.graph import interview_app
@@ -79,6 +79,9 @@ _TURN_TRACKED_FIELDS = (
 
 # 保留的快照数量（支持连续多次 redo），随 interview_state 一起持久化
 MAX_TURN_SNAPSHOTS = 3
+
+# 最少对话轮次门槛（达到或超过该轮次才归档保存进历史记录，否则自动清理）
+MIN_PERSIST_ROUNDS = 3
 
 class SessionManager:
     def __init__(self):
@@ -692,35 +695,49 @@ class SessionManager:
             self._reports[session_id] = report
             self._sessions[session_id] = state
 
-            # Persist report and update session in DB
-            try:
-                async with AsyncSessionLocal() as db:
-                    record = await db.get(InterviewSessionModel, session_id)
-                    if record:
-                        record.status = "finished"
-                        record.round_count = state.get("round_count", 0)
-                        record.interview_state = self._strip_private_state(state)
+            # Persist report and update session in DB only if round_count >= MIN_PERSIST_ROUNDS
+            round_count = state.get("round_count", 0)
+            if round_count >= MIN_PERSIST_ROUNDS:
+                try:
+                    async with AsyncSessionLocal() as db:
+                        record = await db.get(InterviewSessionModel, session_id)
+                        if record:
+                            record.status = "finished"
+                            record.round_count = round_count
+                            record.interview_state = self._strip_private_state(state)
 
-                    report_record = InterviewReportModel(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        match_verdict=report.get("match_verdict", "建议通过"),
-                        overall_summary=report.get("overall_summary", ""),
-                        radar_scores=report.get("radar_scores", {}),
-                        strengths=report.get("strengths", []),
-                        weaknesses=report.get("weaknesses", []),
-                        detailed_reviews=report.get("detailed_reviews", []),
-                        learning_plan=report.get("learning_plan", []),
-                        seven_day_roadmap=report.get("seven_day_roadmap", []),
-                        drill_cards=report.get("drill_cards", [])
-                    )
-                    db.add(report_record)
-                    await db.commit()
-            except Exception as e:
-                logger.error(f"Failed to persist report to DB: {e}")
+                        report_record = InterviewReportModel(
+                            id=str(uuid.uuid4()),
+                            session_id=session_id,
+                            match_verdict=report.get("match_verdict", "建议通过"),
+                            overall_summary=report.get("overall_summary", ""),
+                            radar_scores=report.get("radar_scores", {}),
+                            strengths=report.get("strengths", []),
+                            weaknesses=report.get("weaknesses", []),
+                            detailed_reviews=report.get("detailed_reviews", []),
+                            learning_plan=report.get("learning_plan", []),
+                            seven_day_roadmap=report.get("seven_day_roadmap", []),
+                            drill_cards=report.get("drill_cards", [])
+                        )
+                        db.add(report_record)
+                        await db.commit()
+                except Exception as e:
+                    logger.error(f"Failed to persist report to DB: {e}")
 
-            # 同步全量 prompt logs 与磁盘文件
-            await self._sync_state_to_db(session_id, state)
+                # 同步全量 prompt logs 与磁盘文件
+                await self._sync_state_to_db(session_id, state)
+            else:
+                # 轮次不足门槛（< 3 轮）：不保存入库，自动从数据库清理该未完成会话
+                logger.info(f"Session {session_id} ended with {round_count} < {MIN_PERSIST_ROUNDS} rounds; purging from DB without saving")
+                try:
+                    async with AsyncSessionLocal() as db:
+                        record = await db.get(InterviewSessionModel, session_id)
+                        if record:
+                            await db.delete(record)
+                            await db.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to clean up incomplete session {session_id} from DB: {e}")
+
             return report
 
     async def _create_evolution_candidate(
@@ -790,15 +807,30 @@ class SessionManager:
             await db.commit()
             return {"candidate_id": candidate_id, "status": candidate.status}
 
-    async def get_history(self) -> List[Dict[str, Any]]:
-        """Get history list of all interview sessions (local single-user mode)."""
+    async def get_history(
+        self,
+        min_rounds: int = MIN_PERSIST_ROUNDS,
+        auto_cleanup: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Get history list of all interview sessions (local single-user mode).
+        仅归档并保存满足轮次要求的有效记录（默认 round_count >= 3）。
+        如果 auto_cleanup 为 True，自动清理不足 min_rounds 的废弃记录。
+        """
         try:
+            if auto_cleanup and min_rounds > 0:
+                await self.cleanup_incomplete_sessions(min_rounds=min_rounds)
+
             async with AsyncSessionLocal() as db:
-                result = await db.execute(
+                stmt = (
                     select(InterviewSessionModel)
                     .options(selectinload(InterviewSessionModel.report))
                     .order_by(desc(InterviewSessionModel.created_at))
                 )
+                if min_rounds > 0:
+                    stmt = stmt.where(InterviewSessionModel.round_count >= min_rounds)
+
+                result = await db.execute(stmt)
                 sessions = result.scalars().all()
                 history_list = []
                 for s in sessions:
@@ -1147,13 +1179,22 @@ class SessionManager:
         }
 
     async def delete_session(self, session_id: str) -> bool:
-        """Delete session from DB and cache."""
+        """Delete session from DB, cache, and local disk."""
         self._sessions.pop(session_id, None)
         self._reports.pop(session_id, None)
         self._llm_configs.pop(session_id, None)
         self._finish_locks.pop(session_id, None)
+        self._turn_locks.pop(session_id, None)
+        prompt_recorder.delete_prompts_from_disk(session_id)
         try:
             async with AsyncSessionLocal() as db:
+                # evidence_items 与会话主表无外键关联（SQLite 默认不启用外键），
+                # ORM 级联覆盖不到，必须显式删除
+                await db.execute(
+                    delete(EvidenceItemModel).where(
+                        EvidenceItemModel.session_id == session_id
+                    )
+                )
                 record = await db.get(InterviewSessionModel, session_id)
                 if record:
                     await db.delete(record)
@@ -1164,12 +1205,14 @@ class SessionManager:
         return False
 
     async def delete_sessions(self, session_ids: List[str]) -> int:
-        """Delete multiple sessions from DB and cache; return the number of deleted rows."""
+        """Delete multiple sessions from DB, cache, and local disk; return the number of deleted rows."""
         for sid in session_ids:
             self._sessions.pop(sid, None)
             self._reports.pop(sid, None)
             self._llm_configs.pop(sid, None)
             self._finish_locks.pop(sid, None)
+            self._turn_locks.pop(sid, None)
+            prompt_recorder.delete_prompts_from_disk(sid)
         async with AsyncSessionLocal() as db:
             # bulk delete() 绕过 ORM 级联且 SQLite 默认不启用外键，需显式先删子表
             await db.execute(
@@ -1182,6 +1225,16 @@ class SessionManager:
                     InterviewReportModel.session_id.in_(session_ids)
                 )
             )
+            await db.execute(
+                delete(InterviewPromptLogModel).where(
+                    InterviewPromptLogModel.session_id.in_(session_ids)
+                )
+            )
+            await db.execute(
+                delete(EvidenceItemModel).where(
+                    EvidenceItemModel.session_id.in_(session_ids)
+                )
+            )
             result = await db.execute(
                 delete(InterviewSessionModel).where(
                     InterviewSessionModel.id.in_(session_ids)
@@ -1189,6 +1242,78 @@ class SessionManager:
             )
             await db.commit()
             return result.rowcount
+
+    async def cleanup_incomplete_sessions(
+        self,
+        min_rounds: int = MIN_PERSIST_ROUNDS,
+        exclude_session_id: Optional[str] = None,
+        older_than_minutes: Optional[int] = None
+    ) -> int:
+        """
+        自动清理数据库及本地磁盘中不足指定轮次（默认 round_count < 3 轮）的未完成或中途退出会话。
+        若指定 older_than_minutes，则仅清理创建时间超过指定分钟数的历史会话（防止正在面试中的会话被误删）。
+        """
+        try:
+            cutoff = None
+            if older_than_minutes is not None and older_than_minutes > 0:
+                cutoff = datetime.utcnow() - timedelta(minutes=older_than_minutes)
+
+            async with AsyncSessionLocal() as db:
+                stmt = select(InterviewSessionModel.id).where(
+                    InterviewSessionModel.round_count < min_rounds
+                )
+                if exclude_session_id:
+                    stmt = stmt.where(InterviewSessionModel.id != exclude_session_id)
+                if cutoff is not None:
+                    stmt = stmt.where(InterviewSessionModel.created_at <= cutoff)
+
+                result = await db.execute(stmt)
+                session_ids = [row[0] for row in result.all()]
+
+                # 查询当前所有有效会话 ID，用于彻底扫描清理磁盘孤立文件
+                # 有效会话包括：
+                # 1) round_count >= min_rounds 的正常存档会话
+                # 2) 若启用了 cutoff，在保护窗口内（created_at > cutoff）的活跃会话也必须视为有效，不能误删其磁盘文件
+                valid_stmt = select(InterviewSessionModel.id)
+                if cutoff is not None:
+                    valid_stmt = valid_stmt.where(
+                        (InterviewSessionModel.round_count >= min_rounds) |
+                        (InterviewSessionModel.created_at > cutoff)
+                    )
+                else:
+                    valid_stmt = valid_stmt.where(
+                        InterviewSessionModel.round_count >= min_rounds
+                    )
+
+                valid_result = await db.execute(valid_stmt)
+                valid_ids = {row[0] for row in valid_result.all()}
+                if exclude_session_id:
+                    valid_ids.add(exclude_session_id)
+
+                # 清理不属于任何有效会话的记忆证据残留（弥补历史删除未覆盖 evidence_items 的存量缺口）
+                if valid_ids:
+                    await db.execute(
+                        delete(EvidenceItemModel).where(
+                            EvidenceItemModel.session_id.not_in(valid_ids)
+                        )
+                    )
+                else:
+                    await db.execute(delete(EvidenceItemModel))
+                await db.commit()
+
+            # 同步清理本地磁盘 uploads/transcripts 中的孤立与不足 3 轮镜像文件
+            disk_deleted = prompt_recorder.cleanup_orphaned_transcripts(valid_ids)
+            if disk_deleted > 0:
+                logger.info(f"Cleaned up {disk_deleted} orphaned transcript files from local disk")
+
+            if not session_ids:
+                return 0
+
+            logger.info(f"Auto-cleaning {len(session_ids)} incomplete sessions (< {min_rounds} rounds, older_than_minutes={older_than_minutes})")
+            return await self.delete_sessions(session_ids)
+        except Exception as e:
+            logger.error(f"Failed to cleanup incomplete sessions: {e}")
+            return 0
 
     def get_session(self, session_id: str) -> Optional[InterviewState]:
         return self._strip_private_state(self._sessions.get(session_id))
@@ -1233,22 +1358,23 @@ class SessionManager:
 
                     await db.commit()
 
-            # 同步写入磁盘镜像文件（Markdown 与 JSON）
-            session_meta = {
-                "session_id": session_id,
-                "title": state.get("title", "模拟面试"),
-                "industry": state.get("industry"),
-                "job_role": state.get("job_role"),
-                "seniority": state.get("seniority"),
-                "difficulty": state.get("difficulty"),
-                "round_count": state.get("round_count", 0),
-            }
-            prompt_recorder.save_prompts_to_disk(
-                session_id,
-                session_meta,
-                state.get("prompt_logs", []),
-                state.get("messages", [])
-            )
+            # 仅当达到 3 轮门槛时才同步写入磁盘镜像文件（Markdown 与 JSON）
+            if state.get("round_count", 0) >= MIN_PERSIST_ROUNDS:
+                session_meta = {
+                    "session_id": session_id,
+                    "title": state.get("title", "模拟面试"),
+                    "industry": state.get("industry"),
+                    "job_role": state.get("job_role"),
+                    "seniority": state.get("seniority"),
+                    "difficulty": state.get("difficulty"),
+                    "round_count": state.get("round_count", 0),
+                }
+                prompt_recorder.save_prompts_to_disk(
+                    session_id,
+                    session_meta,
+                    state.get("prompt_logs", []),
+                    state.get("messages", [])
+                )
         except Exception as e:
             logger.error(f"Failed to sync state to DB: {e}")
 

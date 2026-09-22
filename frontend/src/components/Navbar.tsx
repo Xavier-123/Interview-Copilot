@@ -105,18 +105,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => onNavigate('setup')}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
-                currentView === 'setup' || currentView === 'interview' || currentView === 'report'
-                  ? 'bg-blue-600/30 text-blue-400 border border-blue-500/40 shadow-sm'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-              }`}
-            >
-              <Bot className="w-3.5 h-3.5" />
-              <span>模拟面试</span>
-            </button>
-
-            <button
               onClick={() => onNavigate('resumes')}
               className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                 currentView === 'resumes'
@@ -138,6 +126,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Calendar className="w-3.5 h-3.5" />
               <span>面试管理</span>
+            </button>
+
+            <button
+              onClick={() => onNavigate('setup')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                currentView === 'setup' || currentView === 'interview' || currentView === 'report'
+                  ? 'bg-blue-600/30 text-blue-400 border border-blue-500/40 shadow-sm'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>模拟面试</span>
             </button>
           </nav>
         )}

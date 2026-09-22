@@ -19,16 +19,34 @@ interface HistoryViewProps {
   onBack?: () => void;
   onViewReport: (sessionId: string) => void;
   hideBack?: boolean;
+  /** 受控勾选列表（由父级持有，跨页面返回时恢复勾选现场）；不传则组件内部自持 */
+  selectedSessions?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 }
 
-export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport, hideBack = false }) => {
+export const HistoryView: React.FC<HistoryViewProps> = ({
+  onBack,
+  onViewReport,
+  hideBack = false,
+  selectedSessions: controlledSelection,
+  onSelectionChange,
+}) => {
   const [history, setHistory] = useState<HistorySessionItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
+  const [internalSelection, setInternalSelection] = useState<string[]>([]);
   const [showComparison, setShowComparison] = useState(false);
   const [transcriptSessionId, setTranscriptSessionId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const selectedSessions = controlledSelection ?? internalSelection;
+  const updateSelection = (ids: string[]) => {
+    if (onSelectionChange) {
+      onSelectionChange(ids);
+    } else {
+      setInternalSelection(ids);
+    }
+  };
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -36,7 +54,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport, 
       const res = await fetch('/api/v1/interviews/history');
       if (res.ok) {
         const data = await res.json();
-        setHistory(data.history || []);
+        const list: HistorySessionItem[] = data.history || [];
+        setHistory(list);
+        // 清理已不存在的记录 id，避免恢复的勾选残留失效项
+        updateSelection(selectedSessions.filter((id) => list.some((h) => h.session_id === id)));
       }
     } catch (err) {
       console.error('Failed to load history:', err);
@@ -64,7 +85,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport, 
       });
       if (res.ok) {
         setHistory((prev) => prev.filter((s) => s.session_id !== sessionId));
-        setSelectedSessions((prev) => prev.filter((id) => id !== sessionId));
+        updateSelection(selectedSessions.filter((id) => id !== sessionId));
       } else {
         showError('删除失败，请稍后重试');
       }
@@ -91,7 +112,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport, 
         const data = await res.json();
         const deleted = data.deleted ?? 0;
         setHistory((prev) => prev.filter((s) => !selectedSessions.includes(s.session_id)));
-        setSelectedSessions([]);
+        updateSelection([]);
         if (deleted < count) {
           showError(`已删除 ${deleted} 条，${count - deleted} 条未找到或删除失败`);
         }
@@ -109,17 +130,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport, 
   const toggleSelect = (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (selectedSessions.includes(sessionId)) {
-      setSelectedSessions(selectedSessions.filter((id) => id !== sessionId));
+      updateSelection(selectedSessions.filter((id) => id !== sessionId));
     } else {
-      setSelectedSessions([...selectedSessions, sessionId]);
+      updateSelection([...selectedSessions, sessionId]);
     }
   };
 
   const toggleSelectAll = () => {
     if (selectedSessions.length === history.length) {
-      setSelectedSessions([]);
+      updateSelection([]);
     } else {
-      setSelectedSessions(history.map((h) => h.session_id));
+      updateSelection(history.map((h) => h.session_id));
     }
   };
 
@@ -152,7 +173,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onBack, onViewReport, 
             <span>模拟面试历史档案与演进对比</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            浏览所有历史模拟记录，勾选任意 2 场可一键发起雷达重叠对比与弱项攻坚分析，勾选后也可批量删除
+            仅归档保存完成 3 轮及以上深度问答的有效模拟记录（未满 3 轮已自动清理）；勾选任意 2 场可一键发起雷达重叠对比与弱项攻坚分析。
           </p>
         </div>
 
