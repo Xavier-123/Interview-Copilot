@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select, and_, or_, desc, delete
-from app.models.architecture import EvidenceItemModel, MemoryItemModel
+from app.models.architecture import EvidenceItemModel, MemoryConsentModel, MemoryItemModel
 from app.models.db import AsyncSessionLocal
 
 
@@ -44,6 +44,23 @@ class MemoryRepository:
             await db.commit()
         return memory_id
 
+    async def get_consent(self, owner_id: str) -> bool:
+        async with AsyncSessionLocal() as db:
+            item = await db.get(MemoryConsentModel, owner_id)
+            return bool(item and item.enabled)
+
+    async def set_consent(self, owner_id: str, enabled: bool) -> bool:
+        async with AsyncSessionLocal() as db:
+            item = await db.get(MemoryConsentModel, owner_id)
+            if item is None:
+                item = MemoryConsentModel(owner_id=owner_id, enabled=bool(enabled))
+                db.add(item)
+            else:
+                item.enabled = bool(enabled)
+                item.updated_at = datetime.utcnow()
+            await db.commit()
+        return bool(enabled)
+
     async def get_memory(self, memory_id: str) -> Optional[MemoryItemModel]:
         async with AsyncSessionLocal() as db:
             return await db.get(MemoryItemModel, memory_id)
@@ -75,8 +92,11 @@ class MemoryRepository:
                 conditions.append(MemoryItemModel.owner_id == owner_id)
             if scope:
                 conditions.append(MemoryItemModel.scope == scope)
-            if conditions:
-                query = query.where(and_(*conditions))
+            conditions.extend([
+                MemoryItemModel.consent.is_(True),
+                or_(MemoryItemModel.expires_at.is_(None), MemoryItemModel.expires_at > datetime.utcnow()),
+            ])
+            query = query.where(and_(*conditions))
             query = query.order_by(desc(MemoryItemModel.created_at)).limit(limit).offset(offset)
             result = await db.execute(query)
             return list(result.scalars().all())
@@ -98,8 +118,11 @@ class MemoryRepository:
             if query_text:
                 # Substring match on content
                 conditions.append(MemoryItemModel.content.ilike(f"%{query_text}%"))
-            if conditions:
-                query = query.where(and_(*conditions))
+            conditions.extend([
+                MemoryItemModel.consent.is_(True),
+                or_(MemoryItemModel.expires_at.is_(None), MemoryItemModel.expires_at > datetime.utcnow()),
+            ])
+            query = query.where(and_(*conditions))
             query = query.order_by(desc(MemoryItemModel.confidence), desc(MemoryItemModel.created_at)).limit(limit)
             result = await db.execute(query)
             return list(result.scalars().all())

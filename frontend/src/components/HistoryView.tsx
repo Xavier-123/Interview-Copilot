@@ -14,6 +14,7 @@ import type { HistorySessionItem } from '../types';
 import { interviewTypeLabel } from '../types';
 import { ComparisonModal } from './ComparisonModal';
 import { TranscriptModal } from './TranscriptModal';
+import { apiFetch } from '../utils/api';
 
 interface HistoryViewProps {
   onBack?: () => void;
@@ -51,14 +52,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/interviews/history');
-      if (res.ok) {
-        const data = await res.json();
-        const list: HistorySessionItem[] = data.history || [];
-        setHistory(list);
-        // 清理已不存在的记录 id，避免恢复的勾选残留失效项
-        updateSelection(selectedSessions.filter((id) => list.some((h) => h.session_id === id)));
-      }
+      const data = await apiFetch<{ history?: HistorySessionItem[] }>('/api/v1/interviews/history');
+      const list: HistorySessionItem[] = data.history || [];
+      setHistory(list);
+      updateSelection(selectedSessions.filter((id) => list.some((h) => h.session_id === id)));
     } catch (err) {
       console.error('Failed to load history:', err);
     } finally {
@@ -80,15 +77,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     if (!confirm('确认删除该场面试记录及复盘报告吗？')) return;
 
     try {
-      const res = await fetch(`/api/v1/interviews/history/${sessionId}`, {
+      await apiFetch(`/api/v1/interviews/history/${sessionId}`, {
         method: 'DELETE',
       });
-      if (res.ok) {
-        setHistory((prev) => prev.filter((s) => s.session_id !== sessionId));
-        updateSelection(selectedSessions.filter((id) => id !== sessionId));
-      } else {
-        showError('删除失败，请稍后重试');
-      }
+      setHistory((prev) => prev.filter((s) => s.session_id !== sessionId));
+      updateSelection(selectedSessions.filter((id) => id !== sessionId));
     } catch (err) {
       console.error('Failed to delete session:', err);
       showError('删除失败，请检查网络连接');
@@ -103,21 +96,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
     setDeleting(true);
     try {
-      const res = await fetch('/api/v1/interviews/history/batch-delete', {
+      const data = await apiFetch<{ deleted?: number }>('/api/v1/interviews/history/batch-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_ids: selectedSessions }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        const deleted = data.deleted ?? 0;
-        setHistory((prev) => prev.filter((s) => !selectedSessions.includes(s.session_id)));
-        updateSelection([]);
-        if (deleted < count) {
-          showError(`已删除 ${deleted} 条，${count - deleted} 条未找到或删除失败`);
-        }
-      } else {
-        showError('批量删除失败，请稍后重试');
+      const deleted = data.deleted ?? 0;
+      setHistory((prev) => prev.filter((s) => !selectedSessions.includes(s.session_id)));
+      updateSelection([]);
+      if (deleted < count) {
+        showError(`已删除 ${deleted} 条，${count - deleted} 条未找到或删除失败`);
       }
     } catch (err) {
       console.error('Failed to batch delete sessions:', err);

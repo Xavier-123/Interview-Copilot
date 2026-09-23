@@ -48,6 +48,7 @@ async def list_memories(
     )
     return {
         "owner_id": owner_id,
+        "consent": await memory_gateway.has_consent(owner_id),
         "count": len(memories),
         "memories": memories,
     }
@@ -89,15 +90,16 @@ async def delete_memory_item(
 @router.post("/consent")
 async def update_memory_consent(payload: MemoryConsentPayload):
     """更新用户的长期记忆全局授权状态，并记录审计日志。"""
+    consent = await memory_gateway.set_consent(payload.owner_id, payload.enabled)
     await log_audit_event(
         event_type="memory_consent_changed",
         actor=payload.owner_id,
         target_id=payload.owner_id,
-        payload={"enabled": payload.enabled},
+        payload={"enabled": consent},
     )
     return {
         "status": "success",
         "owner_id": payload.owner_id,
-        "consent": payload.enabled,
+        "consent": consent,
         "message": "已更新长期记忆授权偏好",
     }

@@ -40,6 +40,20 @@ select {
   transform-origin: top left;
 }
 
+/* 侧边时间线抽屉入场平滑滑入 */
+@keyframes drawer-slide-left {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.drawer-slide-left {
+  animation: drawer-slide-left 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

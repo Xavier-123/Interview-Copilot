@@ -1,7 +1,10 @@
 import asyncio
+import logging
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.models.db import init_db
 from app.api.v1.interviews import router as interviews_router
@@ -16,6 +19,8 @@ from app.api.v1.evolution import router as evolution_router
 from app.api.ws.interview_stream import router as ws_router
 from app.services.reminder_worker import reminder_scheduler_loop
 from app.services.cleanup_worker import cleanup_scheduler_loop
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,6 +50,16 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
 )
+
+
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(request: Request, exc: Exception):
+    trace_id = uuid.uuid4().hex[:12]
+    logger.error("Unhandled request error trace_id=%s path=%s", trace_id, request.url.path, exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "服务暂时不可用", "trace_id": trace_id},
+    )
 
 # Setup CORS
 app.add_middleware(

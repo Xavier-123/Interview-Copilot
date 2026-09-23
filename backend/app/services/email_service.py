@@ -7,6 +7,7 @@ from email.utils import formataddr
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import logging
+from html import escape
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +38,18 @@ def render_reminder_html(
     elif location_type == "phone":
         loc_display = "电话沟通/面试"
 
-    meeting_info = meeting_link_or_address.strip() if meeting_link_or_address else "未填写"
-    if meeting_link_or_address and ("http://" in meeting_link_or_address or "https://" in meeting_link_or_address):
-        meeting_info_html = f'<a href="{meeting_info}" style="color: #3b82f6; word-break: break-all;" target="_blank">{meeting_info}</a>'
+    company = escape(company or "")
+    job_role = escape(job_role or "")
+    interview_round = escape(interview_round or "")
+    scheduled_at_str = escape(scheduled_at_str or "")
+    salary = escape(salary or "")
+    notes = escape(notes or "")
+    jd_text = escape(jd_text or "")
+    advance_notice = escape(advance_notice or "即将开始")
+    raw_meeting_info = meeting_link_or_address.strip() if meeting_link_or_address else "未填写"
+    meeting_info = escape(raw_meeting_info)
+    if raw_meeting_info.startswith(("http://", "https://")):
+        meeting_info_html = f'<a href="{meeting_info}" style="color: #3b82f6; word-break: break-all;" target="_blank" rel="noreferrer">{meeting_info}</a>'
     else:
         meeting_info_html = meeting_info
 

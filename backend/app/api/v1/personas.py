@@ -240,7 +240,7 @@ async def auto_evolve_persona(
         return {"status": "success", "data": result}
     except Exception as e:
         logger.error(f"Auto-evolution failed for persona {persona_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"仿真进化演练执行失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="仿真进化演练执行失败，请稍后重试")
 
 
 @router.post("/{persona_id}/apply-evolution")
@@ -342,4 +342,3 @@ async def apply_persona_evolution(
         "message": "已成功采纳进化成果并沉淀经验记忆",
         "persona": _persona_response(target_persona),
     }
-

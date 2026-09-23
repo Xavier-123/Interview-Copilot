@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Persona } from '../types';
 import { PersonaEvolutionModal } from './PersonaEvolutionModal';
+import { apiFetch } from '../utils/api';
 
 const AVATAR_OPTIONS = ['🎭', '🔥', '🧠', '🎯', '⚡', '🦅', '💎', '🧙', '🕵️', '👨‍💻', '👩‍💻', '🧑‍🏫'];
 
@@ -62,9 +63,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/personas');
-      if (!res.ok) throw new Error('角色列表加载失败');
-      const data = await res.json();
+      const data = await apiFetch<{ personas?: Persona[] }>('/api/v1/personas');
       setPersonas(data.personas || []);
     } catch (err: any) {
       setError(err.message || '角色列表加载失败');
@@ -120,7 +119,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         switch_hint: form.switch_hint.trim(),
         enabled: true,
       };
-      const res = await fetch(
+      await apiFetch(
         editingId ? `/api/v1/personas/${editingId}` : '/api/v1/personas',
         {
           method: editingId ? 'PUT' : 'POST',
@@ -128,10 +127,6 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           body: JSON.stringify(payload),
         }
       );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || '保存失败');
-      }
       setModalOpen(false);
       await fetchPersonas();
     } catch (err: any) {
@@ -145,11 +140,9 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     if (!window.confirm('确定删除该面试官角色吗？已创建的面试会话使用快照，不受影响。')) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/v1/personas/${id}`, {
+      await apiFetch(`/api/v1/personas/${id}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) throw new Error('删除失败');
       setPersonas((prev) => prev.filter((p) => p.id !== id));
     } catch (err: any) {
       alert(err.message || '删除失败');

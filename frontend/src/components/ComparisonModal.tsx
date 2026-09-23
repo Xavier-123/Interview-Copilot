@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { X, TrendingUp, Sparkles } from 'lucide-react';
 import type { ComparisonResult } from '../types';
+import { apiFetch } from '../utils/api';
 
 interface ComparisonModalProps {
   open: boolean;
@@ -34,7 +35,7 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
         setLoading(true);
         setError(null);
         try {
-          const res = await fetch('/api/v1/interviews/history/compare', {
+          const result = await apiFetch<ComparisonResult>('/api/v1/interviews/history/compare', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -42,11 +43,6 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
               session_id_2: sessionId2,
             }),
           });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || '对比失败');
-          }
-          const result = await res.json();
           setData(result);
         } catch (err: any) {
           setError(err.message || '获取两场对比数据失败');

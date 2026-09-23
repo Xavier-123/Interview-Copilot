@@ -1,15 +1,16 @@
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from app.services.session_manager import session_manager
 from app.services.memory import memory_gateway
+from app.core.config import settings
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
 class CreateSessionRequest(BaseModel):
-    resume_text: Optional[str] = ""
-    jd_text: Optional[str] = ""
+    resume_text: Optional[str] = Field(default="", max_length=100 * 1024)
+    jd_text: Optional[str] = Field(default="", max_length=100 * 1024)
     interview_type: Optional[str] = "structured"  # technical | programmer | behavioral | hr | management | english | structured | custom
     industry: Optional[str] = "互联网/电商"
     job_role: Optional[str] = "后端开发"
@@ -21,7 +22,7 @@ class CreateSessionRequest(BaseModel):
     company_scenario: Optional[Dict[str, Any]] = None
     llm_config: Optional[Dict[str, Any]] = None
     web_search_enabled: Optional[bool] = False
-    max_rounds: Optional[int] = None              # 轮次上限（None -> 后端默认 6；programmer 前端传 8）
+    max_rounds: Optional[int] = Field(default=None, ge=1, le=30)  # 轮次上限
     rounds_mode: Optional[str] = "fixed"          # 轮次决策模式: fixed (显式指定) | adaptive (大模型自决)
 
 class SearchRuntimeConfig(BaseModel):
@@ -29,7 +30,7 @@ class SearchRuntimeConfig(BaseModel):
     api_key: Optional[str] = None
 
 class AnswerRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=settings.MAX_ANSWER_BYTES)
     search_config: Optional[SearchRuntimeConfig] = None
 
 class SimulateAnswerRequest(BaseModel):
@@ -88,8 +89,8 @@ async def create_interview_session(req: CreateSessionRequest):
             "web_search_enabled": state.get("web_search_enabled", False),
             "status": state["status"]
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/start")
 async def start_interview(session_id: str):
@@ -109,8 +110,8 @@ async def start_interview(session_id: str):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/answer")
 async def submit_answer(session_id: str, req: AnswerRequest):
@@ -135,8 +136,8 @@ async def submit_answer(session_id: str, req: AnswerRequest):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/pause")
 async def pause_interview(session_id: str, req: Optional[PauseRequest] = None):
@@ -147,8 +148,8 @@ async def pause_interview(session_id: str, req: Optional[PauseRequest] = None):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/resume")
 async def resume_interview(session_id: str):
@@ -158,8 +159,8 @@ async def resume_interview(session_id: str):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/redo")
 async def redo_turn(session_id: str):
@@ -169,8 +170,8 @@ async def redo_turn(session_id: str):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/restart")
 async def restart_interview(session_id: str):
@@ -186,8 +187,8 @@ async def restart_interview(session_id: str):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/lifeline")
 async def request_lifeline(session_id: str):
@@ -212,8 +213,8 @@ async def simulate_standard_answer(session_id: str, req: Optional[SimulateAnswer
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/toggle-web-search")
 async def toggle_web_search(session_id: str, req: Optional[ToggleWebSearchRequest] = None):
@@ -224,8 +225,8 @@ async def toggle_web_search(session_id: str, req: Optional[ToggleWebSearchReques
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/memory-consent")
 async def set_memory_consent(session_id: str, req: MemoryConsentRequest):
@@ -234,8 +235,8 @@ async def set_memory_consent(session_id: str, req: MemoryConsentRequest):
         return await session_manager.set_memory_consent(session_id, req.enabled)
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.get("/{session_id}/memory")
 async def list_session_memory(session_id: str):
@@ -256,8 +257,8 @@ async def approve_evolution_candidate(candidate_id: str):
         return await session_manager.approve_evolution_candidate(candidate_id)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.post("/{session_id}/finish")
 async def finish_and_evaluate(session_id: str):
@@ -271,11 +272,11 @@ async def finish_and_evaluate(session_id: str):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.get("/history")
-async def get_interview_history(min_rounds: int = 3, auto_cleanup: bool = True):
+async def get_interview_history(min_rounds: int = 3, auto_cleanup: bool = False):
     """List all interview history (local single-user mode, default min_rounds >= 3)."""
     history = await session_manager.get_history(min_rounds=min_rounds, auto_cleanup=auto_cleanup)
     return {"history": history}
@@ -302,8 +303,8 @@ async def compare_interview_sessions(req: CompareRequest):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="服务暂时不可用")
 
 @router.delete("/history/{session_id}")
 async def delete_interview_record(session_id: str):

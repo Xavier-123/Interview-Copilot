@@ -411,6 +411,7 @@ export interface SavedResumeItem {
   created_at?: string;
   updated_at?: string;
   parsed_profile?: ResumeProfile;
+  source_resume_id?: string | null;
   raw_text_preview: string;
 }
 
@@ -420,7 +421,50 @@ export interface SavedResumeDetail {
   created_at?: string;
   updated_at?: string;
   parsed_profile?: ResumeProfile;
+  source_resume_id?: string | null;
   raw_text: string;
+}
+
+// 简历打磨（AI 体检）数据契约
+export interface ResumePolishGap {
+  requirement: string;
+  status: 'missing' | 'weak' | 'covered' | string;
+  evidence?: string;
+  advice?: string;
+}
+
+export interface ResumePolishIssue {
+  quote: string;
+  type?: string;
+  severity?: 'high' | 'medium' | 'low' | string;
+  problem?: string;
+  rewritten?: string;
+  reason?: string;
+  // 后端标记该条能否在原文中精确定位；false 时禁止采纳
+  applicable?: boolean;
+}
+
+export interface ResumePolishRisk {
+  quote?: string;
+  likely_question?: string;
+  advice?: string;
+}
+
+export interface ResumePolishReport {
+  match_score?: number | null;
+  overall_comment?: string;
+  gaps?: ResumePolishGap[];
+  issues?: ResumePolishIssue[];
+  challenge_risks?: ResumePolishRisk[];
+  general_tips?: string[];
+}
+
+export interface ResumePolishApplyResult {
+  status: string;
+  message?: string;
+  applied: { quote: string; rewritten: string }[];
+  skipped: { quote: string; rewritten: string }[];
+  resume: SavedResumeDetail;
 }
 
 // 真实面试日程状态与数据契约

@@ -22,6 +22,7 @@ import { SearchConfigModal } from './SearchConfigModal';
 import type { PersonaDisplayInfo } from '../utils/interviewers';
 import type { InterviewType, IndustryType, SeniorityLevel, DifficultyLevel, Persona, RoundsMode } from '../types';
 import { INDUSTRY_OPTIONS } from '../types';
+import { apiFetch } from '../utils/api';
 
 interface SetupViewProps {
   onStartInterview: (config: {
@@ -278,8 +279,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
   // Fetch custom personas for the custom-interview lineup
   useEffect(() => {
-    fetch('/api/v1/personas')
-      .then((res) => (res.ok ? res.json() : { personas: [] }))
+    apiFetch<{ personas?: Persona[] }>('/api/v1/personas')
       .then((data) => setMyPersonas(data.personas || []))
       .catch(() => setMyPersonas([]));
   }, []);
@@ -288,11 +288,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
   useEffect(() => {
     const fetchResumes = async () => {
       try {
-        const res = await fetch('/api/v1/profiles/resumes');
-        if (res.ok) {
-          const data = await res.json();
-          setUserResumes(data.resumes || []);
-        }
+        const data = await apiFetch<{ resumes?: Array<{ id: string; filename: string; raw_text_preview: string }> }>('/api/v1/profiles/resumes');
+        setUserResumes(data.resumes || []);
       } catch (err) {
         console.error('Failed to load saved resumes:', err);
       }
@@ -317,17 +314,10 @@ export const SetupView: React.FC<SetupViewProps> = ({
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/v1/profiles/upload-resume', {
+      const data = await apiFetch<{ raw_text: string }>('/api/v1/profiles/upload-resume', {
         method: 'POST',
         body: formData,
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || '简历解析失败');
-      }
-
-      const data = await res.json();
       setResumeText(data.raw_text);
       setUploadSuccessName(file.name);
     } catch (err: any) {
@@ -912,13 +902,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     setIsLoadingResume(true);
                     try {
                       // 历史列表只带 200 字预览，完整简历内容需按 id 拉取
-                      const res = await fetch(`/api/v1/profiles/resumes/${resumeId}`);
-                      if (res.ok) {
-                        const data = await res.json();
-                        setResumeText(data.raw_text || '');
-                      } else {
-                        alert('加载历史简历失败，请稍后重试');
-                      }
+                      const data = await apiFetch<{ raw_text?: string }>(`/api/v1/profiles/resumes/${resumeId}`);
+                      setResumeText(data.raw_text || '');
                     } catch (err) {
                       console.error('Failed to load saved resume detail:', err);
                       alert('加载历史简历失败，请检查网络连接');

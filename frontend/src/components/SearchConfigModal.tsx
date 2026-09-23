@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { CheckCircle2, Eraser, Globe2, Loader2, Search, X } from 'lucide-react';
 import type { SearchMetadata } from '../types';
 import { loadSearchConfig, saveSearchConfig } from '../utils/searchConfig';
+import { apiFetch } from '../utils/api';
 
 interface SearchConfigModalProps {
   open: boolean;
@@ -26,12 +27,11 @@ export function SearchConfigModal({ open, onClose }: SearchConfigModalProps) {
     setTesting(true);
     setTestResult(null);
     try {
-      const response = await fetch('/api/v1/search/test', {
+      const data = await apiFetch<SearchMetadata>('/api/v1/search/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: 'tavily', api_key: apiKey.trim() || null }),
       });
-      const data = (await response.json()) as SearchMetadata;
       setTestResult(data);
     } catch {
       setTestResult({

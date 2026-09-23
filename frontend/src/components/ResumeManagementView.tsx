@@ -12,11 +12,21 @@ import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Tag,
   Briefcase,
   Pencil,
+  Wand2,
+  Target,
+  Lightbulb,
 } from 'lucide-react';
-import type { SavedResumeItem, SavedResumeDetail } from '../types';
+import type {
+  SavedResumeItem,
+  SavedResumeDetail,
+  ResumePolishReport,
+  ResumePolishApplyResult,
+} from '../types';
+import { apiFetch } from '../utils/api';
 
 // 编辑弹窗表单状态（画像字段平铺，列表型字段以分隔符文本编辑）
 interface EditProjectForm {
@@ -45,6 +55,34 @@ const splitList = (value: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+// 打磨建议的类型与严重程度展示映射
+const ISSUE_TYPE_LABELS: Record<string, string> = {
+  vague: '表达空泛',
+  no_metrics: '缺少量化',
+  overstated: '表述夸大',
+  structure: '结构问题',
+  risky_claim: '易被追问',
+  typo: '文字瑕疵',
+};
+
+const SEVERITY_BADGES: Record<string, string> = {
+  high: 'bg-red-950/60 border-red-700/50 text-red-300',
+  medium: 'bg-amber-950/60 border-amber-700/50 text-amber-300',
+  low: 'bg-gray-800/80 border-gray-700/60 text-gray-300',
+};
+
+const SEVERITY_LABELS: Record<string, string> = {
+  high: '严重',
+  medium: '中等',
+  low: '轻微',
+};
+
+const GAP_STATUS_META: Record<string, { label: string; className: string }> = {
+  missing: { label: '缺失', className: 'bg-red-950/60 border-red-700/50 text-red-300' },
+  weak: { label: '证据薄弱', className: 'bg-amber-950/60 border-amber-700/50 text-amber-300' },
+  covered: { label: '已覆盖', className: 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300' },
+};
+
 interface ResumeManagementViewProps {
   onBack: () => void;
   onSelectResumeForMock: (resumeText: string, resumeTitle?: string) => void;
@@ -67,16 +105,23 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   const [savingEdit, setSavingEdit] = useState<boolean>(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // AI 体检（简历打磨）状态
+  const [polishingResume, setPolishingResume] = useState<{ id: string; filename: string } | null>(null);
+  const [polishRole, setPolishRole] = useState<string>('');
+  const [polishJd, setPolishJd] = useState<string>('');
+  const [polishing, setPolishing] = useState<boolean>(false);
+  const [polishReport, setPolishReport] = useState<ResumePolishReport | null>(null);
+  const [adoptedIdx, setAdoptedIdx] = useState<number[]>([]);
+  const [applying, setApplying] = useState<boolean>(false);
+  const [polishError, setPolishError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchResumes = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/profiles/resumes');
-      if (res.ok) {
-        const data = await res.json();
-        setResumes(data.resumes || []);
-      }
+      const data = await apiFetch<{ resumes?: SavedResumeItem[] }>('/api/v1/profiles/resumes');
+      setResumes(data.resumes || []);
     } catch (err) {
       console.error('Failed to load resumes:', err);
     } finally {
@@ -97,15 +142,10 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/v1/profiles/upload-resume', {
+      await apiFetch('/api/v1/profiles/upload-resume', {
         method: 'POST',
         body: formData,
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || '简历上传解析失败');
-      }
-      await res.json();
       setUploadSuccess(`成功解析并保存简历: ${file.name}`);
       setShowUploadModal(false);
       await fetchResumes();
@@ -143,15 +183,11 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
     if (!window.confirm(`确定要删除简历 "${filename}" 吗？此操作不可恢复。`)) return;
 
     try {
-      const res = await fetch(`/api/v1/profiles/resumes/${resumeId}`, {
+      await apiFetch(`/api/v1/profiles/resumes/${resumeId}`, {
         method: 'DELETE',
       });
-      if (res.ok) {
-        setResumes((prev) => prev.filter((r) => r.id !== resumeId));
-        if (previewResume?.id === resumeId) setPreviewResume(null);
-      } else {
-        alert('删除失败，请稍后重试');
-      }
+      setResumes((prev) => prev.filter((r) => r.id !== resumeId));
+      if (previewResume?.id === resumeId) setPreviewResume(null);
     } catch (err) {
       console.error('Failed to delete resume:', err);
     }
@@ -160,13 +196,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   // View resume detail
   const handleViewDetail = async (resumeId: string) => {
     try {
-      const res = await fetch(`/api/v1/profiles/resumes/${resumeId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPreviewResume(data);
-      } else {
-        alert('获取简历详情失败');
-      }
+      setPreviewResume(await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeId}`));
     } catch (err) {
       console.error('Failed to fetch resume detail:', err);
     }
@@ -175,12 +205,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   // Open edit modal with current resume values
   const handleEdit = async (resumeId: string) => {
     try {
-      const res = await fetch(`/api/v1/profiles/resumes/${resumeId}`);
-      if (!res.ok) {
-        alert('获取简历详情失败');
-        return;
-      }
-      const data: SavedResumeDetail = await res.json();
+      const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeId}`);
       const profile = data.parsed_profile || {};
       setEditError(null);
       setEditingResume({
@@ -243,16 +268,11 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
         };
       }
 
-      const res = await fetch(`/api/v1/profiles/resumes/${editingResume.id}`, {
+      const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${editingResume.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || '保存失败，请稍后重试');
-      }
-      const data: SavedResumeDetail = await res.json();
       setEditingResume(null);
       setUploadSuccess(`简历已更新: ${data.filename}`);
       await fetchResumes();
@@ -268,15 +288,89 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   const handleLaunchMock = async (resumeItem: SavedResumeItem) => {
     try {
       // Fetch full raw text
-      const res = await fetch(`/api/v1/profiles/resumes/${resumeItem.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        onSelectResumeForMock(data.raw_text || resumeItem.raw_text_preview, resumeItem.filename);
-      } else {
-        onSelectResumeForMock(resumeItem.raw_text_preview, resumeItem.filename);
-      }
+      const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeItem.id}`);
+      onSelectResumeForMock(data.raw_text || resumeItem.raw_text_preview, resumeItem.filename);
     } catch {
       onSelectResumeForMock(resumeItem.raw_text_preview, resumeItem.filename);
+    }
+  };
+
+  // ===== AI 体检（简历打磨） =====
+  const openPolish = (resumeId: string, filename: string) => {
+    setPolishingResume({ id: resumeId, filename });
+    setPolishRole('');
+    setPolishJd('');
+    setPolishReport(null);
+    setAdoptedIdx([]);
+    setPolishing(false);
+    setApplying(false);
+    setPolishError(null);
+  };
+
+  const closePolish = () => setPolishingResume(null);
+
+  const runPolish = async () => {
+    if (!polishingResume) return;
+    setPolishing(true);
+    setPolishError(null);
+    try {
+      const data = await apiFetch<{ status: string; report: ResumePolishReport }>(
+        `/api/v1/profiles/resumes/${polishingResume.id}/polish`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jd_text: polishJd.trim() || null,
+            target_role: polishRole.trim() || null,
+          }),
+        }
+      );
+      setPolishReport(data.report || null);
+      setAdoptedIdx([]);
+    } catch (err: any) {
+      setPolishError(err.message || 'AI 体检失败，请稍后重试');
+    } finally {
+      setPolishing(false);
+    }
+  };
+
+  const toggleAdopt = (idx: number) => {
+    setAdoptedIdx((prev) =>
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+    );
+  };
+
+  // 把勾选的改写建议提交后端，生成新的优化版简历副本（原件不动）
+  const applyAdopted = async () => {
+    if (!polishingResume || !polishReport) return;
+    const items = (polishReport.issues || [])
+      .map((issue, idx) => ({ issue, idx }))
+      .filter(({ issue, idx }) => adoptedIdx.includes(idx) && issue.applicable !== false && !!issue.rewritten)
+      .map(({ issue }) => ({ quote: issue.quote, rewritten: issue.rewritten as string }));
+    if (items.length === 0) return;
+
+    setApplying(true);
+    setPolishError(null);
+    try {
+      const data = await apiFetch<ResumePolishApplyResult>(
+        `/api/v1/profiles/resumes/${polishingResume.id}/polish/apply`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items,
+            target_role: polishRole.trim() || null,
+          }),
+        }
+      );
+      setPolishingResume(null);
+      await fetchResumes();
+      const skippedNote = data.skipped?.length ? `，另有 ${data.skipped.length} 条未能定位已跳过` : '';
+      setUploadSuccess(`优化版简历已生成: ${data.resume.filename}（采纳 ${data.applied.length} 条建议${skippedNote}）`);
+    } catch (err: any) {
+      setPolishError(err.message || '生成优化版简历失败');
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -432,6 +526,12 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
 
                   {/* Profile Tags */}
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {resume.source_resume_id && (
+                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-800/40 text-[11px] text-purple-300">
+                        <Wand2 className="w-3 h-3" />
+                        <span>AI 优化版</span>
+                      </span>
+                    )}
                     <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-blue-950/60 border border-blue-800/40 text-[11px] text-blue-300">
                       <Briefcase className="w-3 h-3" />
                       <span>{role}</span>
@@ -475,13 +575,23 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
 
                 {/* Bottom Actions */}
                 <div className="mt-5 pt-3 border-t border-gray-800/70 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => handleViewDetail(resume.id)}
-                    className="inline-flex items-center space-x-1 text-xs text-gray-400 hover:text-purple-300 transition cursor-pointer px-2 py-1 rounded hover:bg-gray-800"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>预览详情</span>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleViewDetail(resume.id)}
+                      className="inline-flex items-center space-x-1 text-xs text-gray-400 hover:text-purple-300 transition cursor-pointer px-2 py-1 rounded hover:bg-gray-800"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>预览详情</span>
+                    </button>
+                    <button
+                      onClick={() => openPolish(resume.id, resume.filename)}
+                      title="AI 从面试官视角体检这份简历"
+                      className="inline-flex items-center space-x-1 text-xs text-gray-400 hover:text-amber-300 transition cursor-pointer px-2 py-1 rounded hover:bg-gray-800"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span>AI 体检</span>
+                    </button>
+                  </div>
 
                   <button
                     onClick={() => handleLaunchMock(resume)}
@@ -598,6 +708,18 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                 <h3 className="text-base font-bold text-white">{previewResume.filename}</h3>
               </div>
               <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    const id = previewResume.id;
+                    const filename = previewResume.filename;
+                    setPreviewResume(null);
+                    openPolish(id, filename);
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-amber-500 text-gray-300 hover:text-amber-300 text-xs font-medium transition cursor-pointer"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  <span>AI 体检</span>
+                </button>
                 <button
                   onClick={() => handleEdit(previewResume.id)}
                   className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 text-gray-300 hover:text-purple-300 text-xs font-medium transition cursor-pointer"
@@ -931,6 +1053,299 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 6. AI Polish Modal */}
+      {polishingResume && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-3xl max-h-[85vh] rounded-2xl bg-gray-900 border border-gray-800 p-6 flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-gray-800 pb-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <Wand2 className="w-5 h-5 text-purple-400" />
+                  <h3 className="text-base font-bold text-white">AI 简历体检</h3>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-0.5">{polishingResume.filename}</p>
+              </div>
+              <button
+                onClick={closePolish}
+                disabled={applying}
+                className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-40"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+              {polishError && (
+                <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-700/60 text-red-300 text-xs flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>{polishError}</span>
+                </div>
+              )}
+
+              {!polishReport ? (
+                <>
+                  {/* Intro & fact-boundary promise */}
+                  <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-1.5">
+                    <div className="text-xs font-bold text-purple-300 flex items-center space-x-1.5">
+                      <Target className="w-3.5 h-3.5" />
+                      <span>面试官视角的简历体检</span>
+                    </div>
+                    <p className="text-[11px] text-gray-300 leading-relaxed">
+                      AI 将从真实面试官的角度诊断这份简历：JD 匹配缺口、表达质量问题、以及哪些内容会被追问翻车。
+                    </p>
+                    <p className="text-[11px] text-purple-300/80 leading-relaxed">
+                      事实边界：AI 只重组和润色原文，不会编造任何经历；所有改写建议由你逐条确认后生成新版本，原简历不会被修改。
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-300">
+                      目标岗位 <span className="font-normal text-gray-500">（可选，例如：资深后端工程师）</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={polishRole}
+                      onChange={(e) => setPolishRole(e.target.value)}
+                      className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                      placeholder="留空则做通用体检；采纳建议时将作为新版本的命名标签"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-300">
+                      岗位描述 JD <span className="font-normal text-gray-500">（可选，提供后输出匹配度评分与缺口分析）</span>
+                    </label>
+                    <textarea
+                      rows={6}
+                      value={polishJd}
+                      onChange={(e) => setPolishJd(e.target.value)}
+                      className="w-full text-xs p-3 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y leading-relaxed"
+                      placeholder="粘贴目标岗位的 JD 全文..."
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Overall verdict */}
+                  {(polishReport.overall_comment || polishReport.match_score != null) && (
+                    <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs font-bold text-purple-300 flex items-center space-x-1.5">
+                          <Target className="w-3.5 h-3.5" />
+                          <span>总体诊断</span>
+                        </div>
+                        {polishReport.match_score != null && (
+                          <div className="flex items-center space-x-2 shrink-0">
+                            <div className="w-28 h-1.5 rounded-full bg-gray-800 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  polishReport.match_score >= 80
+                                    ? 'bg-emerald-500'
+                                    : polishReport.match_score >= 60
+                                      ? 'bg-amber-500'
+                                      : 'bg-red-500'
+                                }`}
+                                style={{ width: `${Math.max(2, polishReport.match_score)}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-bold text-white">
+                              {polishReport.match_score}
+                              <span className="text-[10px] text-gray-500"> /100</span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {polishReport.overall_comment && (
+                        <p className="text-xs text-gray-300 leading-relaxed">{polishReport.overall_comment}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* JD gaps */}
+                  {(polishReport.gaps?.length ?? 0) > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
+                        <Briefcase className="w-3.5 h-3.5 text-purple-400" />
+                        <span>JD 匹配缺口</span>
+                      </div>
+                      {polishReport.gaps!.map((gap, idx) => {
+                        const meta = GAP_STATUS_META[gap.status] || GAP_STATUS_META.weak;
+                        return (
+                          <div key={idx} className="p-3 rounded-xl bg-gray-950/40 border border-gray-800 space-y-1.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-xs font-bold text-white">{gap.requirement}</span>
+                              <span className={`shrink-0 px-2 py-0.5 rounded border text-[10px] ${meta.className}`}>
+                                {meta.label}
+                              </span>
+                            </div>
+                            {gap.evidence && <p className="text-[11px] text-gray-400 leading-relaxed">{gap.evidence}</p>}
+                            {gap.advice && (
+                              <p className="text-[11px] text-purple-300/90 leading-relaxed">建议：{gap.advice}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Adoptable issues */}
+                  {(polishReport.issues?.length ?? 0) > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
+                        <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+                        <span>逐条打磨建议（勾选采纳后将生成新版本）</span>
+                      </div>
+                      {polishReport.issues!.map((issue, idx) => {
+                        const canAdopt = issue.applicable !== false && !!issue.rewritten;
+                        const checked = adoptedIdx.includes(idx);
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-xl border space-y-2 transition ${
+                              checked ? 'border-purple-600/60 bg-purple-950/20' : 'border-gray-800 bg-gray-950/40'
+                            } ${!canAdopt ? 'opacity-60' : ''}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                                <span className={`px-2 py-0.5 rounded border text-[10px] ${SEVERITY_BADGES[issue.severity || 'medium'] || SEVERITY_BADGES.medium}`}>
+                                  {SEVERITY_LABELS[issue.severity || 'medium'] || '中等'}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 text-[10px] border border-gray-700/60">
+                                  {ISSUE_TYPE_LABELS[issue.type || ''] || '表达优化'}
+                                </span>
+                              </div>
+                              {canAdopt ? (
+                                <label className="flex items-center space-x-1.5 text-[11px] text-gray-300 cursor-pointer select-none shrink-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleAdopt(idx)}
+                                    className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-950 accent-purple-600 cursor-pointer"
+                                  />
+                                  <span>采纳</span>
+                                </label>
+                              ) : (
+                                <span className="text-[10px] text-gray-500 shrink-0">无法定位原文</span>
+                              )}
+                            </div>
+                            <div className="p-2 rounded-lg bg-gray-900 border border-gray-800 text-[11px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed">
+                              {issue.quote}
+                            </div>
+                            {issue.problem && (
+                              <p className="text-[11px] text-gray-400 leading-relaxed">问题：{issue.problem}</p>
+                            )}
+                            {canAdopt && (
+                              <div className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-[11px] text-emerald-200 whitespace-pre-wrap leading-relaxed">
+                                {issue.rewritten}
+                              </div>
+                            )}
+                            {issue.reason && (
+                              <p className="text-[11px] text-gray-500 leading-relaxed">理由：{issue.reason}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Interviewer challenge risks */}
+                  {(polishReport.challenge_risks?.length ?? 0) > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                        <span>追问风险（面试官视角）</span>
+                      </div>
+                      {polishReport.challenge_risks!.map((risk, idx) => (
+                        <div key={idx} className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 space-y-1.5">
+                          {risk.quote && (
+                            <p className="text-[11px] text-gray-400 font-mono">「{risk.quote}」</p>
+                          )}
+                          {risk.likely_question && (
+                            <p className="text-xs text-amber-200 leading-relaxed">可能的追问：{risk.likely_question}</p>
+                          )}
+                          {risk.advice && <p className="text-[11px] text-gray-400 leading-relaxed">应对：{risk.advice}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* General tips */}
+                  {(polishReport.general_tips?.length ?? 0) > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
+                        <Lightbulb className="w-3.5 h-3.5 text-yellow-400" />
+                        <span>整体建议</span>
+                      </div>
+                      <ul className="p-3 rounded-xl bg-gray-950/40 border border-gray-800 space-y-1.5 list-disc list-inside">
+                        {polishReport.general_tips!.map((tip, idx) => (
+                          <li key={idx} className="text-[11px] text-gray-300 leading-relaxed">{tip}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-gray-800 flex items-center justify-between gap-3">
+              <p className="text-[11px] text-gray-500 min-w-0">
+                {polishReport
+                  ? `已选 ${adoptedIdx.length} 条建议 · 生成新简历副本，原件不动`
+                  : 'JD 与目标岗位均为可选，提供后诊断更精准'}
+              </p>
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  onClick={closePolish}
+                  disabled={applying}
+                  className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-xs font-medium transition cursor-pointer disabled:opacity-50"
+                >
+                  取消
+                </button>
+                {!polishReport ? (
+                  <button
+                    onClick={runPolish}
+                    disabled={polishing}
+                    className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium text-xs transition cursor-pointer"
+                  >
+                    {polishing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>AI 体检中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-4 h-4" />
+                        <span>开始 AI 体检</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={applyAdopted}
+                    disabled={applying || adoptedIdx.length === 0}
+                    className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium text-xs transition cursor-pointer"
+                  >
+                    {applying ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>生成中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>用 {adoptedIdx.length} 条建议生成优化版</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

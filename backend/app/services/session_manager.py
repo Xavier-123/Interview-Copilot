@@ -270,6 +270,7 @@ class SessionManager:
                 await db.commit()
         except Exception as e:
             logger.error(f"Failed to persist new session to DB: {e}")
+            raise RuntimeError("Session persistence failed") from e
 
         return initial_state
 
@@ -356,21 +357,25 @@ class SessionManager:
         return custom_config
 
     async def start_session(self, session_id: str) -> Dict[str, Any]:
-        state = await self._ensure_state(session_id)
-        if not state:
-            raise ValueError(f"Session {session_id} not found")
+        async with self._turn_lock(session_id):
+            state = await self._ensure_state(session_id)
+            if not state:
+                raise ValueError(f"Session {session_id} not found")
+            if state.get("status") != "ready":
+                # Idempotent start: retries must not advance the graph again.
+                return state
 
-        state["status"] = "in_progress"
-        runtime_state = self._runtime_state(session_id, state)
-        new_state = await interview_app.ainvoke(runtime_state)
-        new_state = self._strip_private_state(new_state) or state
-        # 图输出不含 turn_snapshots（非 schema 通道），重新挂回以供 redo 使用
-        new_state["turn_snapshots"] = state.get("turn_snapshots", [])
-        self._annotate_turn_messages(new_state)
-        self._sessions[session_id] = new_state
+            state["status"] = "in_progress"
+            runtime_state = self._runtime_state(session_id, state)
+            new_state = await interview_app.ainvoke(runtime_state)
+            new_state = self._strip_private_state(new_state) or state
+            # 图输出不含 turn_snapshots（非 schema 通道），重新挂回以供 redo 使用
+            new_state["turn_snapshots"] = state.get("turn_snapshots", [])
+            self._annotate_turn_messages(new_state)
+            self._sessions[session_id] = new_state
 
-        await self._sync_state_to_db(session_id, new_state)
-        return new_state
+            await self._sync_state_to_db(session_id, new_state)
+            return new_state
 
     async def submit_candidate_answer(
         self,
@@ -758,11 +763,32 @@ class SessionManager:
             and m.get("name")
             and m.get("name") != "orchestrator"
         ))
+        # Keep the replayable interviewer contract beside the audit result.
+        # Prompt logs are the source of truth for the exact compiled prompt used
+        # in this session, so evolution replay cannot silently fall back to a
+        # different hard-coded interviewer.
+        specs = []
+        for role in participating_keys:
+            prompt = next(
+                (p.get("system_prompt") for p in reversed(state.get("prompt_logs") or [])
+                 if isinstance(p, dict) and p.get("node") == role and p.get("system_prompt")),
+                None,
+            )
+            if prompt:
+                specs.append({
+                    "interviewer_id": role,
+                    "compiled_system_prompt": prompt,
+                    "focus_topics": (state.get("custom_config") or {}).get("focus_topics", []),
+                    "guardrails": {"source_session_id": state.get("session_id")},
+                })
         candidate_id = str(uuid.uuid4())
         payload = {
+            "interviewer_id": participating_keys[0] if participating_keys else "orchestrator",
+            "base_version_id": state.get("interviewer_version", "legacy-v1"),
+            "source_session_id": state.get("session_id"),
+            "interviewer_specs": specs,
             "audit": audit_result,
             "interviewer_keys": participating_keys,
-            "source_session_id": state.get("session_id"),
             "source_trace_id": state.get("trace_id"),
         }
         try:
@@ -810,17 +836,14 @@ class SessionManager:
     async def get_history(
         self,
         min_rounds: int = MIN_PERSIST_ROUNDS,
-        auto_cleanup: bool = True
+        auto_cleanup: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Get history list of all interview sessions (local single-user mode).
         仅归档并保存满足轮次要求的有效记录（默认 round_count >= 3）。
-        如果 auto_cleanup 为 True，自动清理不足 min_rounds 的废弃记录。
+         历史查询只读；未完成会话由显式清理接口或后台 Worker 处理。
         """
         try:
-            if auto_cleanup and min_rounds > 0:
-                await self.cleanup_incomplete_sessions(min_rounds=min_rounds)
-
             async with AsyncSessionLocal() as db:
                 stmt = (
                     select(InterviewSessionModel)
@@ -1259,8 +1282,12 @@ class SessionManager:
                 cutoff = datetime.utcnow() - timedelta(minutes=older_than_minutes)
 
             async with AsyncSessionLocal() as db:
+                status_clause = InterviewSessionModel.status.in_(("ready", "paused"))
+                if cutoff is not None:
+                    status_clause = status_clause | (InterviewSessionModel.status == "in_progress")
                 stmt = select(InterviewSessionModel.id).where(
-                    InterviewSessionModel.round_count < min_rounds
+                    InterviewSessionModel.round_count < min_rounds,
+                    status_clause,
                 )
                 if exclude_session_id:
                     stmt = stmt.where(InterviewSessionModel.id != exclude_session_id)
@@ -1377,6 +1404,7 @@ class SessionManager:
                 )
         except Exception as e:
             logger.error(f"Failed to sync state to DB: {e}")
+            raise RuntimeError("Session persistence failed") from e
 
     async def _sync_messages(self, db, session_id: str, messages: List[Dict[str, Any]]):
         """
@@ -1598,6 +1626,7 @@ class SessionManager:
             raise ValueError(f"Session {session_id} not found")
         state["memory_consent"] = bool(enabled)
         self._sessions[session_id] = state
+        await memory_gateway.set_consent("local-user", bool(enabled))
         await self._sync_state_to_db(session_id, state)
         return {"session_id": session_id, "memory_consent": bool(enabled)}
 

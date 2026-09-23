@@ -86,6 +86,8 @@ class MemoryGateway:
         # 1. Validate scope & consent
         self.gate.validate_scope(scope)
         self.gate.verify_consent(scope, consent)
+        if scope == "candidate" and not await self.repo.get_consent(owner_id):
+            raise MemoryConsentRequired("Candidate memory consent is not enabled for this owner.")
 
         # 2. PII Sanitization
         sanitized_content, detected_pii = self.gate.sanitize_pii(content)
@@ -121,8 +123,17 @@ class MemoryGateway:
 
         return memory_id
 
+    async def set_consent(self, owner_id: str, enabled: bool) -> bool:
+        """Persist the local user's candidate-memory authorization."""
+        return await self.repo.set_consent(owner_id, enabled)
+
+    async def has_consent(self, owner_id: str) -> bool:
+        return await self.repo.get_consent(owner_id)
+
     async def list_candidate_memories(self, owner_id: str) -> List[Dict[str, Any]]:
         """Backward-compatible helper to list consented memories for a candidate."""
+        if not await self.has_consent(owner_id):
+            return []
         return await self.retriever.retrieve(owner_id=owner_id, scope="candidate", limit=100)
 
     async def list_memories(
@@ -133,12 +144,15 @@ class MemoryGateway:
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """Lists or searches memories for an owner."""
-        return await self.retriever.retrieve(
+        memories = await self.retriever.retrieve(
             owner_id=owner_id,
             scope=scope,
             query=query,
             limit=limit,
         )
+        if not await self.has_consent(owner_id):
+            memories = [item for item in memories if item.get("scope") != "candidate"]
+        return memories
 
     async def delete_memory(self, memory_id: str, owner_id: Optional[str] = None) -> bool:
         """Deletes a memory item and logs an audit record."""

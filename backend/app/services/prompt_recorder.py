@@ -4,8 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from app.agents.state import PromptLogItem
+from app.core.config import settings
 
-TRANSCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads", "transcripts")
+TRANSCRIPTS_DIR = os.path.join(settings.UPLOAD_DIR, "transcripts")
 
 CALL_TYPE_LABELS = {
     "interviewer_question": "面试官提问与追问",

@@ -217,8 +217,6 @@ async def persona_node(state: InterviewState) -> dict:
 
     prompt += f"{scenario_section}{rag_context}{interviewer_utils.QUESTION_LIMIT}"
 
-    print(f"sys_msg: {sys_msg}")
-    print(f"prompt: {prompt}")
     resp = await llm_service.invoke(
         [SystemMessage(content=sys_msg), HumanMessage(content=prompt)],
         llm_config=state.get("llm_config")
@@ -259,4 +257,3 @@ async def persona_node(state: InterviewState) -> dict:
         "current_interviewer": role,
         "status": "waiting_user"
     }
-

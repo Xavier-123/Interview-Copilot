@@ -60,6 +60,12 @@ class ReplayRunner:
                 interviewer_spec = candidate.candidate_spec
 
         spec = interviewer_spec or {}
+        if not spec.get("compiled_system_prompt") and not spec.get("system_prompt"):
+            specs = spec.get("interviewer_specs") or []
+            if specs and isinstance(specs[0], dict):
+                spec = {**spec, **specs[0]}
+        if not spec.get("compiled_system_prompt") and not spec.get("system_prompt"):
+            raise ValueError("Evolution candidate is missing a replayable interviewer spec")
         interviewer_id = spec.get("interviewer_id") or (candidate.interviewer_id if candidate else "interviewer-default")
         base_version_id = candidate.base_version_id if candidate else None
 
@@ -181,7 +187,7 @@ class ReplayRunner:
         avoid_phrases = guardrails.get("avoid_phrases", [])
 
         # Try LLM if configured
-        system_prompt = spec.get("system_prompt")
+        system_prompt = spec.get("compiled_system_prompt") or spec.get("system_prompt")
         if system_prompt:
             try:
                 t_context = "\n".join([f"[{t['speaker']}]: {t['content']}" for t in transcript[-4:]])

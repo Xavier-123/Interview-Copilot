@@ -20,6 +20,7 @@ import type { TranscriptData, TranscriptMessage, PromptLogItem } from '../types'
 import { interviewTypeLabel } from '../types';
 import { getInterviewerMeta } from '../utils/interviewers';
 import { SearchSources } from './SearchSources';
+import { apiFetch } from '../utils/api';
 
 interface TranscriptModalProps {
   sessionId: string;
@@ -162,12 +163,7 @@ export const TranscriptModal: React.FC<TranscriptModalProps> = ({ sessionId, onC
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/v1/interviews/${sessionId}/transcript`);
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || '对话记录加载失败');
-        }
-        setTranscript(await res.json());
+        setTranscript(await apiFetch<TranscriptData>(`/api/v1/interviews/${sessionId}/transcript`));
       } catch (err: any) {
         setError(err.message || '对话记录加载失败');
       } finally {

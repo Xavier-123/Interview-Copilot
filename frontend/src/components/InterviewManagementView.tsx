@@ -25,6 +25,7 @@ import {
   Handshake,
   Bell,
   Mail,
+  LayoutList,
 } from 'lucide-react';
 import type {
   InterviewScheduleItem,
@@ -34,7 +35,9 @@ import type {
 import { HistoryView } from './HistoryView';
 import { DateTimePicker } from './DateTimePicker';
 import { ReminderSettingsModal } from './ReminderSettingsModal';
+import { InterviewCalendarView } from './InterviewCalendarView';
 import { checkAndNotifyUpcomingSchedules } from '../utils/browserNotification';
+import { apiFetch } from '../utils/api';
 
 interface InterviewManagementViewProps {
   onBack: () => void;
@@ -67,6 +70,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   // Schedules state
   const [schedules, setSchedules] = useState<InterviewScheduleItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<'calendar' | 'cards'>('calendar');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showModal, setShowModal] = useState<boolean>(false);
   const [showReminderSettings, setShowReminderSettings] = useState<boolean>(false);
@@ -90,14 +94,10 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   const fetchSchedules = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/schedules');
-      if (res.ok) {
-        const data = await res.json();
-        const list: InterviewScheduleItem[] = data.schedules || [];
-        setSchedules(list);
-        // 扫描待面试日程并触发浏览器桌面弹窗提醒（如果到达提前阈值）
-        checkAndNotifyUpcomingSchedules(list, onStartMockWithSchedule);
-      }
+      const data = await apiFetch<{ schedules?: InterviewScheduleItem[] }>('/api/v1/schedules');
+      const list: InterviewScheduleItem[] = data.schedules || [];
+      setSchedules(list);
+      checkAndNotifyUpcomingSchedules(list, onStartMockWithSchedule);
     } catch (err) {
       console.error('Failed to load schedules:', err);
     } finally {
@@ -118,19 +118,24 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   }, []);
 
   // Open modal for Create
-  const handleOpenCreate = () => {
+  const handleOpenCreate = (defaultDateKey?: string | React.MouseEvent) => {
     setEditingSchedule(null);
     setFormCompany('');
     setFormJobRole('');
     setFormRound('一面');
-    // Default scheduled time: tomorrow 14:00
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(14, 0, 0, 0);
-    // Format to YYYY-MM-DDTHH:mm
-    const tzOffset = tomorrow.getTimezoneOffset() * 60000;
-    const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
-    setFormScheduledAt(localISOTime);
+    if (typeof defaultDateKey === 'string' && defaultDateKey) {
+      // 预填指定日期上午 10:00
+      setFormScheduledAt(`${defaultDateKey}T10:00`);
+    } else {
+      // Default scheduled time: tomorrow 14:00
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(14, 0, 0, 0);
+      // Format to YYYY-MM-DDTHH:mm
+      const tzOffset = tomorrow.getTimezoneOffset() * 60000;
+      const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
+      setFormScheduledAt(localISOTime);
+    }
     setFormLocationType('online');
     setFormMeetingLink('');
     setFormSalary('');
@@ -193,20 +198,18 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
     try {
       if (editingSchedule) {
         // Update
-        const res = await fetch(`/api/v1/schedules/${editingSchedule.id}`, {
+        await apiFetch(`/api/v1/schedules/${editingSchedule.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error('更新日程失败');
       } else {
         // Create
-        const res = await fetch('/api/v1/schedules', {
+        await apiFetch('/api/v1/schedules', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error('创建日程失败');
       }
       setShowModal(false);
       await fetchSchedules();
@@ -225,16 +228,14 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
   ) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/v1/schedules/${scheduleId}`, {
+      await apiFetch(`/api/v1/schedules/${scheduleId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
-        setSchedules((prev) =>
-          prev.map((s) => (s.id === scheduleId ? { ...s, status: newStatus } : s))
-        );
-      }
+      setSchedules((prev) =>
+        prev.map((s) => (s.id === scheduleId ? { ...s, status: newStatus } : s))
+      );
     } catch (err) {
       console.error('Failed to update status:', err);
     }
@@ -246,14 +247,10 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
     if (!window.confirm(`确定要删除 ${company} 的面试日程吗？`)) return;
 
     try {
-      const res = await fetch(`/api/v1/schedules/${scheduleId}`, {
+      await apiFetch(`/api/v1/schedules/${scheduleId}`, {
         method: 'DELETE',
       });
-      if (res.ok) {
-        setSchedules((prev) => prev.filter((s) => s.id !== scheduleId));
-      } else {
-        alert('删除失败，请稍后重试');
-      }
+      setSchedules((prev) => prev.filter((s) => s.id !== scheduleId));
     } catch (err) {
       console.error('Failed to delete schedule:', err);
     }
@@ -491,8 +488,38 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
               </button>
             </div>
 
-            {/* Action Buttons: Reminder Settings & Add Schedule */}
-            <div className="flex items-center space-x-2.5 self-start sm:self-auto">
+            {/* Action Buttons: View Toggle, Reminder Settings & Add Schedule */}
+            <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+              {/* View Switcher: 月历排期 vs 卡片列表 */}
+              <div className="flex items-center p-1 rounded-xl bg-gray-900 border border-gray-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('calendar')}
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    viewMode === 'calendar'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="在日历表格上标注哪天哪个时间段有面试"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>月历排期</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    viewMode === 'cards'
+                      ? 'bg-gray-800 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="卡片列表视图"
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                  <span>卡片列表</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setShowReminderSettings(true)}
@@ -504,7 +531,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
               </button>
 
               <button
-                onClick={handleOpenCreate}
+                onClick={() => handleOpenCreate()}
                 className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium text-xs shadow-lg shadow-emerald-900/30 transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -513,12 +540,21 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
             </div>
           </div>
 
-          {/* Schedule Cards List */}
+          {/* Schedule Content */}
           {loading ? (
             <div className="py-20 text-center space-y-3">
               <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mx-auto" />
               <p className="text-xs text-gray-400">正在加载面试日程...</p>
             </div>
+          ) : viewMode === 'calendar' ? (
+            <InterviewCalendarView
+              schedules={filteredSchedules}
+              onStartMockWithSchedule={onStartMockWithSchedule}
+              onEditSchedule={handleOpenEdit}
+              onDeleteSchedule={handleDelete}
+              onQuickStatusChange={handleQuickStatusChange}
+              onCreateScheduleForDate={(dateStr) => handleOpenCreate(dateStr)}
+            />
           ) : filteredSchedules.length === 0 ? (
             <div className="py-16 text-center border border-dashed border-gray-800 rounded-2xl p-8 space-y-4 bg-gray-900/30">
               <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
@@ -533,7 +569,7 @@ export const InterviewManagementView: React.FC<InterviewManagementViewProps> = (
                 </p>
               </div>
               <button
-                onClick={handleOpenCreate}
+                onClick={() => handleOpenCreate()}
                 className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />

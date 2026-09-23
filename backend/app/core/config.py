@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     # Uploads
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
+    MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
+    MAX_TEXT_BYTES: int = 100 * 1024
+    MAX_ANSWER_BYTES: int = 20 * 1024
 
     # Security & CORS
     CORS_ORIGINS: list[str] = ["*"]

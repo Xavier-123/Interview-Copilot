@@ -174,6 +174,58 @@ class LLMService:
             elif isinstance(m, HumanMessage):
                 user_prompt += m.content + "\n"
 
+        # 1. Check if it's Resume Polish Coach (check before Resume Parser)
+        if "简历打磨教练" in user_prompt or "Resume Polish Coach" in user_prompt:
+            # 未提供 JD（prompt 中为占位文案"（未提供岗位描述）"）时按契约返回空缺口
+            with_jd = "（未提供岗位描述）" not in user_prompt
+            return json.dumps({
+                "match_score": 68 if with_jd else None,
+                "overall_comment": "整体经历真实完整，但项目描述偏职责罗列，缺少量化结果；核心技能与目标岗位匹配度中等，需突出与岗位最相关的证据。",
+                "gaps": [
+                    {
+                        "requirement": "高并发系统设计经验",
+                        "status": "weak",
+                        "evidence": "简历仅提到'优化核心链路'，没有流量规模与指标",
+                        "advice": "补充真实 QPS/延迟数据，或说明你在链路中的具体职责"
+                    },
+                    {
+                        "requirement": "消息队列实战",
+                        "status": "missing",
+                        "evidence": "JD 要求 Kafka/RocketMQ 经验，简历未体现",
+                        "advice": "如有相关经历请补充真实项目；没有则不要虚构"
+                    }
+                ] if with_jd else [],
+                "issues": [
+                    {
+                        "quote": "优化核心链路，将超时率从3%降低到0.1%",
+                        "type": "vague",
+                        "severity": "high",
+                        "problem": "缺少自己的角色与实现手段，成果像团队成果而非个人贡献",
+                        "rewritten": "主导订单履约核心链路优化，通过异步化改造与缓存预热，将超时率从3%降至0.1%（补充你的真实数据）",
+                        "reason": "突出个人行动与手段，量化结果才有说服力"
+                    },
+                    {
+                        "quote": "负责多个业务模块的开发与维护",
+                        "type": "no_metrics",
+                        "severity": "medium",
+                        "problem": "纯职责描述，无成果、无规模，面试官无法判断水平",
+                        "rewritten": "独立负责 3 个核心业务模块的迭代与稳定性（补充具体模块与规模）",
+                        "reason": "把职责改成可验证的范围与结果"
+                    }
+                ],
+                "challenge_risks": [
+                    {
+                        "quote": "支持万级QPS",
+                        "likely_question": "这个万级 QPS 是怎么测算的？峰值多少，瓶颈在哪一层？",
+                        "advice": "提前准备压测方法、峰值数据与瓶颈分析；若没有实测依据建议降低措辞"
+                    }
+                ],
+                "general_tips": [
+                    "每条项目经历按'背景-行动-量化结果'三段式重写",
+                    "把与目标岗位最相关的项目放在最前面"
+                ]
+            }, ensure_ascii=False)
+
         # 1. Check if it's Resume Parser
         if "简历信息抽取专家" in user_prompt or "Resume Parser" in user_prompt:
             return json.dumps({

@@ -13,5 +13,7 @@ class SavedResume(Base):
     file_path = Column(String(512), nullable=True)
     raw_text = Column(Text, nullable=False)
     parsed_profile = Column(JSON, default=dict)
+    # 若该简历由"AI 体检采纳建议"生成，则指向其来源简历 id（原件永远不被覆盖）
+    source_resume_id = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

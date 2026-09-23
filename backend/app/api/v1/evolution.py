@@ -204,7 +204,12 @@ async def approve_candidate(
         raise HTTPException(status_code=404, detail="进化候选版本不存在")
 
     # Safety gate verification
-    spec_review = safety_reviewer.review_spec(candidate.candidate_spec)
+    candidate_spec = candidate.candidate_spec or {}
+    replay_spec = candidate_spec
+    specs = candidate_spec.get("interviewer_specs") or []
+    if specs and isinstance(specs[0], dict):
+        replay_spec = {**candidate_spec, **specs[0]}
+    spec_review = safety_reviewer.review_spec(replay_spec)
     if not spec_review.get("passed", False):
         raise HTTPException(
             status_code=400,
@@ -212,7 +217,7 @@ async def approve_candidate(
         )
 
     # Replay metrics check
-    if candidate.status == "draft" and not candidate.replay_metrics:
+    if candidate.status not in {"offline_tested", "review_required"} or not candidate.replay_metrics:
         # Require replay run before approval
         raise HTTPException(
             status_code=400,
@@ -224,7 +229,7 @@ async def approve_candidate(
     version_info = await interviewer_registry.create_version(
         interviewer_id=candidate.interviewer_id or "interviewer-default",
         display_name=display_name,
-        spec=candidate.candidate_spec,
+        spec=replay_spec,
         created_by="human_reviewer",
     )
     version_id = version_info.get("id") or version_info.get("version_id")

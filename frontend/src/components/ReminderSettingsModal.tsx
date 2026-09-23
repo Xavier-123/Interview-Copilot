@@ -22,6 +22,7 @@ import {
   saveBrowserNotificationConfig,
   sendTestDesktopNotification,
 } from '../utils/browserNotification';
+import { apiFetch } from '../utils/api';
 
 interface ReminderSettingsModalProps {
   open: boolean;
@@ -75,9 +76,8 @@ export const ReminderSettingsModal: React.FC<ReminderSettingsModalProps> = ({
   const fetchEmailSettings = async () => {
     setLoadingSettings(true);
     try {
-      const res = await fetch('/api/v1/notifications/settings');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch<{ settings: NotificationSettings }>('/api/v1/notifications/settings');
+      {
         const s: NotificationSettings = data.settings;
         setEmailEnabled(Boolean(s.email_enabled));
         setReceiverEmail(s.receiver_email || '');
@@ -163,7 +163,7 @@ export const ReminderSettingsModal: React.FC<ReminderSettingsModalProps> = ({
     setSavingSettings(true);
     setEmailStatusMsg(null);
     try {
-      const res = await fetch('/api/v1/notifications/settings', {
+      const data = await apiFetch<{ settings?: NotificationSettings }>('/api/v1/notifications/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,9 +178,6 @@ export const ReminderSettingsModal: React.FC<ReminderSettingsModalProps> = ({
           remind_advance_hours: Number(remindAdvanceHours),
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || '保存邮件配置失败');
 
       setHasPassword(Boolean(data.settings?.has_password));
       setEmailStatusMsg({ text: '邮件提醒配置已成功保存！' });
@@ -199,7 +196,7 @@ export const ReminderSettingsModal: React.FC<ReminderSettingsModalProps> = ({
     setTestingEmail(true);
     setEmailStatusMsg(null);
     try {
-      const res = await fetch('/api/v1/notifications/test-email', {
+      const data = await apiFetch<{ message?: string }>('/api/v1/notifications/test-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -213,8 +210,6 @@ export const ReminderSettingsModal: React.FC<ReminderSettingsModalProps> = ({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || '测试邮件发送失败');
       setEmailStatusMsg({ text: data.message || `测试邮件已发送至 ${receiverEmail}，请查收！` });
     } catch (err: any) {
       setEmailStatusMsg({ text: err.message || '测试邮件发送失败，请检查 SMTP 账号密码', isError: true });

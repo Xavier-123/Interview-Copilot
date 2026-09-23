@@ -75,6 +75,16 @@ class MemoryItemModel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class MemoryConsentModel(Base):
+    """Local single-user memory authorization state."""
+
+    __tablename__ = "memory_consents"
+
+    owner_id = Column(String(64), primary_key=True)
+    enabled = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AuditEventModel(Base):
     __tablename__ = "audit_events"
 

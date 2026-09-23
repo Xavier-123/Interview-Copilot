@@ -1,18 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
-import { HomeView } from './components/HomeView';
-import { ResumeManagementView } from './components/ResumeManagementView';
-import { InterviewManagementView } from './components/InterviewManagementView';
-import { SetupView } from './components/SetupView';
-import { InterviewRoom } from './components/InterviewRoom';
-import { ReportView } from './components/ReportView';
-import { PersonaLibraryView } from './components/PersonaLibraryView';
+const HomeView = lazy(() => import('./components/HomeView').then((m) => ({ default: m.HomeView })));
+const ResumeManagementView = lazy(() => import('./components/ResumeManagementView').then((m) => ({ default: m.ResumeManagementView })));
+const InterviewManagementView = lazy(() => import('./components/InterviewManagementView').then((m) => ({ default: m.InterviewManagementView })));
+const SetupView = lazy(() => import('./components/SetupView').then((m) => ({ default: m.SetupView })));
+const InterviewRoom = lazy(() => import('./components/InterviewRoom').then((m) => ({ default: m.InterviewRoom })));
+const ReportView = lazy(() => import('./components/ReportView').then((m) => ({ default: m.ReportView })));
+const PersonaLibraryView = lazy(() => import('./components/PersonaLibraryView').then((m) => ({ default: m.PersonaLibraryView })));
 import { PrivacyModeProvider } from './context/PrivacyModeContext';
 import { loadLLMConfig } from './utils/llmConfig';
 import { loadSearchConfig } from './utils/searchConfig';
 import { resolveInterviewerLineup } from './utils/interviewers';
 import type { PersonaDisplayInfo } from './utils/interviewers';
 import { checkAndNotifyUpcomingSchedules } from './utils/browserNotification';
+import { apiFetch } from './utils/api';
 import type {
   Message,
   EvaluationReport,
@@ -79,14 +80,11 @@ export function App() {
   useEffect(() => {
     const scanUpcomingSchedules = async () => {
       try {
-        const res = await fetch('/api/v1/schedules');
-        if (res.ok) {
-          const data = await res.json();
-          checkAndNotifyUpcomingSchedules(data.schedules || [], () => {
-            setInterviewsTab('calendar');
-            setView('interviews');
-          });
-        }
+        const data = await apiFetch<{ schedules?: InterviewScheduleItem[] }>('/api/v1/schedules');
+        checkAndNotifyUpcomingSchedules(data.schedules || [], () => {
+          setInterviewsTab('calendar');
+          setView('interviews');
+        });
       } catch {
         // silent background failure
       }
@@ -135,9 +133,8 @@ export function App() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
       // Create session
-      const sessionRes = await fetch('/api/v1/interviews/session', {
-        method: 'POST',
-        headers,
+      const sessionData = await apiFetch<{ session_id: string }>('/api/v1/interviews/session', {
+        method: 'POST', headers,
         body: JSON.stringify({
           resume_text: config.resumeText,
           jd_text: config.jdText,
@@ -155,21 +152,14 @@ export function App() {
           ...(llmConfig ? { llm_config: llmConfig } : {}),
         }),
       });
-
-      if (!sessionRes.ok) {
-        throw new Error('创建面试会话失败');
-      }
-
-      const sessionData = await sessionRes.json();
       const newSessionId = sessionData.session_id;
       setSessionId(newSessionId);
 
       // Start interview (Icebreak / First Question)
-      const startRes = await fetch(`/api/v1/interviews/${newSessionId}/start`, {
+      const startData = await apiFetch<any>(`/api/v1/interviews/${newSessionId}/start`, {
         method: 'POST',
         headers,
       });
-      const startData = await startRes.json();
 
       setStage(startData.stage || 'self_intro');
       setCurrentInterviewer(startData.current_interviewer || 'orchestrator');
@@ -202,7 +192,7 @@ export function App() {
 
     try {
       const searchConfig = loadSearchConfig();
-      const res = await fetch(`/api/v1/interviews/${sessionId}/answer`, {
+      const data = await apiFetch<any>(`/api/v1/interviews/${sessionId}/answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -210,7 +200,6 @@ export function App() {
           ...(searchConfig ? { search_config: searchConfig } : {}),
         }),
       });
-      const data = await res.json();
 
       setStage(data.stage);
       setCurrentInterviewer(data.current_interviewer);
@@ -235,14 +224,12 @@ export function App() {
   const handlePauseInterview = async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/pause`, {
+      await apiFetch(`/api/v1/interviews/${sessionId}/pause`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ elapsed_seconds: elapsedSeconds }),
       });
-      if (res.ok) {
-        setStatus('paused');
-      }
+      setStatus('paused');
     } catch (err) {
       console.error('Failed to pause interview:', err);
     }
@@ -252,12 +239,10 @@ export function App() {
   const handleResumeInterview = async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/resume`, {
+      await apiFetch(`/api/v1/interviews/${sessionId}/resume`, {
         method: 'POST',
       });
-      if (res.ok) {
-        setStatus('waiting_user');
-      }
+      setStatus('waiting_user');
     } catch (err) {
       console.error('Failed to resume interview:', err);
     }
@@ -268,10 +253,9 @@ export function App() {
     if (!sessionId || isThinking) return;
     setIsThinking(true);
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/redo`, {
+      const data = await apiFetch<any>(`/api/v1/interviews/${sessionId}/redo`, {
         method: 'POST',
       });
-      const data = await res.json();
       if (data.state) {
         setMessages(data.state.messages || []);
         setStage(data.state.stage);
@@ -291,10 +275,9 @@ export function App() {
     if (!sessionId || isThinking) return;
     setIsThinking(true);
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/restart`, {
+      const data = await apiFetch<any>(`/api/v1/interviews/${sessionId}/restart`, {
         method: 'POST',
       });
-      const data = await res.json();
       setStage(data.stage || 'self_intro');
       setCurrentInterviewer(data.current_interviewer || 'orchestrator');
       setMessages(data.messages || []);
@@ -314,10 +297,9 @@ export function App() {
     if (!sessionId || isThinking) return;
     setIsThinking(true);
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/lifeline`, {
+      const data = await apiFetch<any>(`/api/v1/interviews/${sessionId}/lifeline`, {
         method: 'POST',
       });
-      const data = await res.json();
       setLifelinesUsed(data.lifelines_used);
       setMessages(data.state.messages);
     } catch (error) {
@@ -331,13 +313,10 @@ export function App() {
   const handleToggleWebSearch = async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/toggle-web-search`, {
+      const data = await apiFetch<any>(`/api/v1/interviews/${sessionId}/toggle-web-search`, {
         method: 'POST',
       });
-      if (res.ok) {
-        const data = await res.json();
-        setWebSearchEnabled(data.web_search_enabled);
-      }
+      setWebSearchEnabled(data.web_search_enabled);
     } catch (err) {
       console.error('Failed to toggle web search:', err);
     }
@@ -347,21 +326,12 @@ export function App() {
   const handleSimulateAnswer = async (): Promise<SimulateAnswerResult | void> => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/simulate-answer`, {
+      const data = await apiFetch<any>(`/api/v1/interviews/${sessionId}/simulate-answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ search_config: loadSearchConfig() }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        return {
-          answer: data.standard_answer,
-          searchMetadata: data.search_metadata,
-        };
-      } else {
-        const err = await res.json();
-        alert(err.detail || '构思标准回答失败');
-      }
+      return { answer: data.standard_answer, searchMetadata: data.search_metadata };
     } catch (err) {
       console.error('Failed to simulate answer:', err);
       alert('构思标准回答失败，请检查服务状态');
@@ -379,7 +349,7 @@ export function App() {
       );
       if (!confirmExit) return;
       try {
-        await fetch(`/api/v1/interviews/history/${sessionId}`, { method: 'DELETE' });
+        await apiFetch(`/api/v1/interviews/history/${sessionId}`, { method: 'DELETE' });
       } catch (err) {
         console.error('Failed to cleanup aborted session:', err);
       }
@@ -390,10 +360,9 @@ export function App() {
     finishInFlightRef.current = true;
     setIsThinking(true);
     try {
-      const res = await fetch(`/api/v1/interviews/${sessionId}/finish`, {
+      const data = await apiFetch<any>(`/api/v1/interviews/${sessionId}/finish`, {
         method: 'POST',
       });
-      const data = await res.json();
       setReport(data.report);
       setStage('report');
       setStatus('finished');
@@ -411,16 +380,11 @@ export function App() {
   const handleViewReportFromHistory = async (targetSessionId: string) => {
     setIsThinking(true);
     try {
-      const res = await fetch(`/api/v1/interviews/${targetSessionId}/report`);
-      if (res.ok) {
-        const data = await res.json();
-        setReport(data);
-        setSessionId(targetSessionId);
-        setStage('report');
-        setView('report');
-      } else {
-        alert('未找到该场面试的评估报告');
-      }
+      const data = await apiFetch<EvaluationReport>(`/api/v1/interviews/${targetSessionId}/report`);
+      setReport(data);
+      setSessionId(targetSessionId);
+      setStage('report');
+      setView('report');
     } catch (err) {
       console.error('Failed to load past report:', err);
     } finally {
@@ -481,6 +445,7 @@ export function App() {
           />
 
           <main className="flex-1">
+            <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-400">正在加载工作区...</div>}>
             {view === 'home' && (
               <HomeView
                 onNavigate={(v) => {
@@ -561,6 +526,7 @@ export function App() {
                 backLabel="返回面试管理"
               />
             )}
+            </Suspense>
           </main>
       </div>
     </PrivacyModeProvider>

@@ -14,6 +14,7 @@ import {
   Flame,
 } from 'lucide-react';
 import type { Persona } from '../types';
+import { apiFetch } from '../utils/api';
 
 interface SimulationTurn {
   round: number;
@@ -116,7 +117,7 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
     const timer3 = setTimeout(() => setLoadingStep(4), 10000);
 
     try {
-      const res = await fetch(`/api/v1/personas/${persona.id}/auto-evolve`, {
+      const json = await apiFetch<{ data: any }>(`/api/v1/personas/${persona.id}/auto-evolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -125,12 +126,6 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || '仿真演练执行失败');
-      }
-
-      const json = await res.json();
       setResult(json.data);
       setActiveTab('solution');
     } catch (err: any) {
@@ -159,16 +154,11 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
         new_name: mode === 'save_as_new' ? customV2Name.trim() || undefined : undefined,
       };
 
-      const res = await fetch(`/api/v1/personas/${persona.id}/apply-evolution`, {
+      await apiFetch(`/api/v1/personas/${persona.id}/apply-evolution`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || '应用进化方案失败');
-      }
 
       alert(mode === 'overwrite' ? '✅ 优化方案已成功覆盖更新当前面试官！' : '🎉 已成功将优化成果另存为全新角色版本！');
       onSuccess();

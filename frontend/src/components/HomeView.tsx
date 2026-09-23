@@ -12,6 +12,7 @@ import {
   PlusCircle,
 } from 'lucide-react';
 import type { AppView, InterviewScheduleItem, SavedResumeItem, HistorySessionItem } from '../types';
+import { apiFetch } from '../utils/api';
 
 interface HomeViewProps {
   onNavigate: (view: AppView) => void;
@@ -34,22 +35,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
       setLoading(true);
       try {
         const [resResume, resSchedule, resHistory] = await Promise.all([
-          fetch('/api/v1/profiles/resumes').catch(() => null),
-          fetch('/api/v1/schedules').catch(() => null),
-          fetch('/api/v1/interviews/history').catch(() => null),
+          apiFetch<{ resumes?: SavedResumeItem[] }>('/api/v1/profiles/resumes').catch(() => null),
+          apiFetch<{ schedules?: InterviewScheduleItem[] }>('/api/v1/schedules').catch(() => null),
+          apiFetch<{ history?: HistorySessionItem[] }>('/api/v1/interviews/history').catch(() => null),
         ]);
 
-        if (resResume && resResume.ok) {
-          const data = await resResume.json();
-          setResumes(data.resumes || []);
+        if (resResume) {
+          setResumes(resResume.resumes || []);
         }
-        if (resSchedule && resSchedule.ok) {
-          const data = await resSchedule.json();
-          setSchedules(data.schedules || []);
+        if (resSchedule) {
+          setSchedules(resSchedule.schedules || []);
         }
-        if (resHistory && resHistory.ok) {
-          const data = await resHistory.json();
-          setHistory(data.history || []);
+        if (resHistory) {
+          setHistory(resHistory.history || []);
         }
       } catch (err) {
         console.error('Failed to load dashboard data:', err);

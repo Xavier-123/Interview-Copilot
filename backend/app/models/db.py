@@ -150,3 +150,9 @@ async def init_db():
             await conn.execute(text("ALTER TABLE user_resumes ADD COLUMN updated_at DATETIME"))
         except Exception:
             pass  # Already exists
+
+        # 简历打磨：AI 优化版副本指向来源简历（幂等迁移）
+        try:
+            await conn.execute(text("ALTER TABLE user_resumes ADD COLUMN source_resume_id VARCHAR(64)"))
+        except Exception:
+            pass  # Already exists
