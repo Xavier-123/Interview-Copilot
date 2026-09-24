@@ -19,7 +19,7 @@
 </div>
 
 > [!NOTE]
-> 当前项目定位为**本地单用户应用**。默认使用 SQLite 和本地文件目录，不包含登录、租户隔离或生产级部署配置。`SYSTEM_ARCHITECTURE.md` 中的部分内容属于后续架构设计，不代表全部已经落地。
+> 当前项目定位为**本地单用户应用**。默认使用 SQLite 和本地文件目录，不包含登录、租户隔离或生产级部署配置。部分架构设计属于后续规划，不代表全部已经落地。
 
 ---
 
@@ -204,7 +204,6 @@ Interview-Copilot/
 │   └── package.json
 ├── diagrams/                       # 架构图与工作流图（HTML / PNG）
 ├── docker-compose.yml
-├── SYSTEM_ARCHITECTURE.md          # 更完整的架构与演进设计
 └── README.md
 ~~~
 
@@ -277,8 +276,6 @@ npm run lint
 
 <div align="center">
 
-更完整的目标架构、记忆治理和进化实验设计见 **[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)**
-
-<sub>本地优先 · 单用户 · 用于个人面试训练</sub>
+<sub>Interview-Copilot · 本地优先 · 单用户 · 用于个人面试训练</sub>
 
 </div>
