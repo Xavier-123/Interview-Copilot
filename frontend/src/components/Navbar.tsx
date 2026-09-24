@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bot, Sparkles, Clock, Shield, ShieldAlert, Settings, History, Users2, FileText, Calendar, LayoutDashboard, Sun, Moon } from 'lucide-react';
+import { Bot, Sparkles, Clock, Shield, ShieldAlert, Settings, Users2, FileText, Calendar, LayoutDashboard, Sun, Moon } from 'lucide-react';
 import { usePrivacyMode } from '../context/privacyContext';
 import { useTheme } from '../context/ThemeContext';
 import { SettingsModal } from './SettingsModal';
@@ -16,7 +16,6 @@ interface NavbarProps {
   onNavigate?: (view: AppView) => void;
   /** 当前是否处于面试/报告页面，用于决定是否渲染五段进度条 */
   inInterview?: boolean;
-  onNavigateHistory?: () => void;
   onNavigatePersonas?: () => void;
   onNavigateHome?: () => void;
 }
@@ -27,7 +26,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentView = 'home',
   onNavigate,
   inInterview = false,
-  onNavigateHistory,
   onNavigatePersonas,
   onNavigateHome,
 }) => {
@@ -200,23 +198,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Users2 className={`w-3.5 h-3.5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
               <span className="hidden sm:inline">角色库</span>
-            </button>
-          )}
-
-          {/* History Button */}
-          {onNavigateHistory && (
-            <button
-              type="button"
-              onClick={onNavigateHistory}
-              title="查看面试历史档案与双场次对比"
-              className={`flex items-center space-x-1 text-xs px-2.5 sm:px-3 py-1.5 rounded-lg border transition cursor-pointer ${
-                isDark
-                  ? 'bg-gray-900/80 hover:bg-gray-800 border-gray-800 hover:border-gray-700 text-gray-300'
-                  : 'bg-white hover:bg-slate-50 border-slate-200/80 hover:border-slate-300 text-slate-700 shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
-              }`}
-            >
-              <History className={`w-3.5 h-3.5 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
-              <span className="hidden sm:inline">历史对比</span>
             </button>
           )}
 

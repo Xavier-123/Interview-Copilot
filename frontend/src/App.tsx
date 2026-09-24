@@ -448,7 +448,6 @@ export function App() {
                 setView(v);
               }}
               inInterview={view === 'report'}
-              onNavigateHistory={() => setView('interviews')}
               onNavigatePersonas={() => setView('personas')}
               onNavigateHome={handleRestart}
             />

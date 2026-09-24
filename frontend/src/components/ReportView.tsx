@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Radar,
   RadarChart,
@@ -25,10 +25,13 @@ import {
   Trophy,
   Zap,
   BookOpen,
+  GitCompareArrows,
 } from 'lucide-react';
-import type { EvaluationReport, DrillCardItem } from '../types';
+import type { EvaluationReport, DrillCardItem, HistorySessionItem } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ScorecardShareModal } from './ScorecardShareModal';
+import { ComparisonModal } from './ComparisonModal';
+import { apiFetch } from '../utils/api';
 
 interface ReportViewProps {
   report: EvaluationReport;
@@ -54,6 +57,46 @@ export const ReportView: React.FC<ReportViewProps> = ({
   const [activeDrillModal, setActiveDrillModal] = useState<DrillCardItem | null>(null);
   const [drillAnswer, setDrillAnswer] = useState('');
   const [drillSubmitted, setDrillSubmitted] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  /** 与本场对比的基准场次（优先同岗位、早于本场且有复盘报告的最近一场） */
+  const [prevSession, setPrevSession] = useState<HistorySessionItem | null>(null);
+  /** 上一场检索是否已结束，用于区分「加载中」与「确实没有可对比场次」 */
+  const [prevLookupDone, setPrevLookupDone] = useState(!sessionId);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+
+    const lookupPreviousSession = async () => {
+      try {
+        const data = await apiFetch<{ history?: HistorySessionItem[] }>('/api/v1/interviews/history');
+        const all = data.history || [];
+        const current = all.find((h) => h.session_id === sessionId);
+        let pool = all.filter((h) => h.has_report && h.session_id !== sessionId);
+        // 只保留早于本场的场次；拿不到本场时间（如刚生成报告尚未落库）时退化为全部候选
+        if (current?.created_at) {
+          const currentTime = new Date(current.created_at).getTime();
+          const earlier = pool.filter((h) => new Date(h.created_at).getTime() < currentTime);
+          if (earlier.length > 0) pool = earlier;
+        }
+        pool.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        // 同岗位优先，找不到同岗位再退回任意岗位的最近一场
+        const sameRole = current?.job_role
+          ? pool.filter((h) => h.job_role === current.job_role)
+          : [];
+        if (!cancelled) setPrevSession((sameRole.length > 0 ? sameRole : pool)[0] ?? null);
+      } catch (err) {
+        console.error('Failed to lookup previous session for comparison:', err);
+      } finally {
+        if (!cancelled) setPrevLookupDone(true);
+      }
+    };
+
+    lookupPreviousSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   const radarData = [
     { subject: '技术深度', score: report.radar_scores.technical_depth, fullMark: 10 },
@@ -216,6 +259,31 @@ export const ReportView: React.FC<ReportViewProps> = ({
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>再次挑战</span>
                 </button>
+
+                {/* 与上一场对比：把「历史对比」入口放到最有语境的报告页 */}
+                {prevSession ? (
+                  <button
+                    type="button"
+                    onClick={() => setCompareOpen(true)}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium text-xs shadow-md shadow-violet-500/20 transition cursor-pointer"
+                    title={`与「${prevSession.title}」对比六维能力演进`}
+                  >
+                    <GitCompareArrows className="w-3.5 h-3.5" />
+                    <span>与上一场对比</span>
+                  </button>
+                ) : prevLookupDone ? (
+                  <button
+                    type="button"
+                    disabled
+                    className={`inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-medium cursor-not-allowed ${
+                      isDark ? 'border-gray-800 text-gray-500' : 'border-gray-300 text-gray-400'
+                    }`}
+                    title="完成 2 场及以上模拟后，即可与上一场做六维演进对比"
+                  >
+                    <GitCompareArrows className="w-3.5 h-3.5" />
+                    <span>与上一场对比</span>
+                  </button>
+                ) : null}
 
                 <div className="flex items-center space-x-1">
                   <button
@@ -647,6 +715,16 @@ export const ReportView: React.FC<ReportViewProps> = ({
         report={report}
         sessionId={sessionId}
       />
+
+      {/* 与上一场对比 Modal（session_1 = 上一场，session_2 = 本场） */}
+      {compareOpen && prevSession && sessionId && (
+        <ComparisonModal
+          open={compareOpen}
+          sessionId1={prevSession.session_id}
+          sessionId2={sessionId}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
     </div>
   );
 };

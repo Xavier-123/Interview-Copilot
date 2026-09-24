@@ -149,7 +149,7 @@ frontend/
 | `HomeView` | 首页，选择面试类型入口 |
 | `SetupView` | 面试配置：简历 / JD 输入、难度、轮次、面试官阵容 |
 | `InterviewRoom` | 面试房间（最大组件）：WebSocket 实时问答、暂停 / 重做 / 求助、AI 思考动效 |
-| `ReportView` | 面试报告：六维评分、逐题复盘、训练计划 |
+| `ReportView` | 面试报告：六维评分、逐题复盘、训练计划、与上一场对比入口 |
 
 ### 🗓️ 面试管理
 
@@ -182,7 +182,7 @@ frontend/
 | 组件 | 职责 |
 | :--- | :--- |
 | `HistoryView` | 历史场次列表 |
-| `ComparisonModal` | 两场面试对比 |
+| `ComparisonModal` | 两场面试对比（报告页「与上一场对比」/ 复盘列表勾选 2 场） |
 | `TranscriptModal` | 完整转录查看 |
 | `ScorecardShareModal` | 评分卡分享 |
 

@@ -8,7 +8,7 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { X, TrendingUp, Sparkles } from 'lucide-react';
+import { X, TrendingUp, Sparkles, ArrowRight } from 'lucide-react';
 import type { ComparisonResult } from '../types';
 import { apiFetch } from '../utils/api';
 import { useTheme } from '../context/ThemeContext';
@@ -102,6 +102,17 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
           </div>
         ) : data ? (
           <div className="overflow-y-auto flex-1 space-y-6 pt-4 pr-1">
+            {/* 对比场次标识：避免跨岗位兜底对比时看不出比的是哪两场 */}
+            <div className="flex items-center justify-center space-x-2 text-[11px]">
+              <span className="px-2.5 py-1 rounded-lg bg-surface-subtle border border-line-subtle text-content-secondary max-w-[42%] truncate">
+                {data.session_1.title}
+              </span>
+              <ArrowRight className="w-3 h-3 shrink-0 text-content-muted" />
+              <span className="px-2.5 py-1 rounded-lg bg-brand-subtle border border-line-focus text-content-primary max-w-[42%] truncate">
+                {data.session_2.title}
+              </span>
+            </div>
+
             {/* Overview Banner */}
             <div className="p-4 rounded-2xl bg-surface-subtle border border-line-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>

@@ -38,7 +38,11 @@ const splitList = (value: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-// 打磨建议的类型与严重程度展示映射
+// 上传白名单与大小上限，与后端 profiles.py 保持一致
+const ALLOWED_RESUME_EXTS = ['.pdf', '.docx', '.txt', '.md', '.json'];
+const MAX_UPLOAD_MB = 10;
+
+// 打磨建议的类型与严重程度展示映射（dark/light 双主题样式）
 const ISSUE_TYPE_LABELS: Record<string, string> = {
   vague: '表达空泛',
   no_metrics: '缺少量化',
@@ -48,10 +52,19 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
   typo: '文字瑕疵',
 };
 
-const SEVERITY_BADGES: Record<string, string> = {
-  high: 'bg-red-950/60 border-red-700/50 text-red-300',
-  medium: 'bg-amber-950/60 border-amber-700/50 text-amber-300',
-  low: 'bg-gray-800/80 border-gray-700/60 text-gray-300',
+const SEVERITY_BADGES: Record<string, { dark: string; light: string }> = {
+  high: {
+    dark: 'bg-red-950/60 border-red-700/50 text-red-300',
+    light: 'bg-red-50 border-red-200 text-red-700',
+  },
+  medium: {
+    dark: 'bg-amber-950/60 border-amber-700/50 text-amber-300',
+    light: 'bg-amber-50 border-amber-200 text-amber-700',
+  },
+  low: {
+    dark: 'bg-gray-800/80 border-gray-700/60 text-gray-300',
+    light: 'bg-gray-100 border-gray-200 text-gray-600',
+  },
 };
 
 const SEVERITY_LABELS: Record<string, string> = {
@@ -60,10 +73,22 @@ const SEVERITY_LABELS: Record<string, string> = {
   low: '轻微',
 };
 
-const GAP_STATUS_META: Record<string, { label: string; className: string }> = {
-  missing: { label: '缺失', className: 'bg-red-950/60 border-red-700/50 text-red-300' },
-  weak: { label: '证据薄弱', className: 'bg-amber-950/60 border-amber-700/50 text-amber-300' },
-  covered: { label: '已覆盖', className: 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300' },
+const GAP_STATUS_META: Record<string, { label: string; dark: string; light: string }> = {
+  missing: {
+    label: '缺失',
+    dark: 'bg-red-950/60 border-red-700/50 text-red-300',
+    light: 'bg-red-50 border-red-200 text-red-700',
+  },
+  weak: {
+    label: '证据薄弱',
+    dark: 'bg-amber-950/60 border-amber-700/50 text-amber-300',
+    light: 'bg-amber-50 border-amber-200 text-amber-700',
+  },
+  covered: {
+    label: '已覆盖',
+    dark: 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300',
+    light: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  },
 };
 
 interface ResumeManagementViewProps {
@@ -78,16 +103,21 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   const { isDark } = useTheme();
   const [resumes, setResumes] = useState<SavedResumeItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [previewResume, setPreviewResume] = useState<SavedResumeDetail | null>(null);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [pastedText, setPastedText] = useState<string>('');
   const [pastedTitle, setPastedTitle] = useState<string>('');
   const [editorResumeDetail, setEditorResumeDetail] = useState<SavedResumeDetail | null>(null);
   const [savingEdit, setSavingEdit] = useState<boolean>(false);
   const [editError, setEditError] = useState<string | null>(null);
+  // 删除确认弹窗状态
+  const [deletingTarget, setDeletingTarget] = useState<{ id: string; filename: string } | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
   // AI 体检（简历打磨）状态
   const [polishingResume, setPolishingResume] = useState<{ id: string; filename: string } | null>(null);
@@ -103,11 +133,13 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
 
   const fetchResumes = async () => {
     setLoading(true);
+    setListError(null);
     try {
       const data = await apiFetch<{ resumes?: SavedResumeItem[] }>('/api/v1/profiles/resumes');
       setResumes(data.resumes || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load resumes:', err);
+      setListError(err.message || '简历列表加载失败，请检查后端服务后重试');
     } finally {
       setLoading(false);
     }
@@ -119,6 +151,21 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
 
   // Upload file handler
   const handleFileUpload = async (file: File) => {
+    // 前端预检：类型与大小，避免无效的网络往返
+    const ext = (file.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+    if (!ALLOWED_RESUME_EXTS.includes(ext)) {
+      setUploadError(
+        `不支持的文件类型 "${ext || file.name}"，仅支持 PDF、DOCX、TXT、MD、JSON 格式`
+      );
+      return;
+    }
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setUploadError(
+        `文件大小 ${(file.size / 1024 / 1024).toFixed(1)}MB 超过 ${MAX_UPLOAD_MB}MB 上限，请压缩后重试`
+      );
+      return;
+    }
+
     setUploading(true);
     setUploadError(null);
     setUploadSuccess(null);
@@ -161,19 +208,29 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
     }
   };
 
-  // Delete resume
-  const handleDelete = async (resumeId: string, filename: string, e: React.MouseEvent) => {
+  // 打开删除确认弹窗（替代原生 window.confirm）
+  const handleDelete = (resumeId: string, filename: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm(`确定要删除简历 "${filename}" 吗？此操作不可恢复。`)) return;
+    setDeletingTarget({ id: resumeId, filename });
+  };
 
+  // 用户确认后真正执行删除
+  const handleConfirmDelete = async () => {
+    if (!deletingTarget) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/api/v1/profiles/resumes/${resumeId}`, {
+      await apiFetch(`/api/v1/profiles/resumes/${deletingTarget.id}`, {
         method: 'DELETE',
       });
-      setResumes((prev) => prev.filter((r) => r.id !== resumeId));
-      if (previewResume?.id === resumeId) setPreviewResume(null);
-    } catch (err) {
+      setResumes((prev) => prev.filter((r) => r.id !== deletingTarget.id));
+      if (previewResume?.id === deletingTarget.id) setPreviewResume(null);
+      setUploadSuccess(`简历已删除: ${deletingTarget.filename}`);
+      setDeletingTarget(null);
+    } catch (err: any) {
       console.error('Failed to delete resume:', err);
+      setUploadError(err.message || `删除简历 "${deletingTarget.filename}" 失败，请稍后重试`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -181,8 +238,9 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   const handleViewDetail = async (resumeId: string) => {
     try {
       setPreviewResume(await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeId}`));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch resume detail:', err);
+      setUploadError(err.message || '简历详情加载失败，请稍后重试');
     }
   };
 
@@ -192,8 +250,9 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
       setEditError(null);
       const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeId}`);
       setEditorResumeDetail(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to open resume editor:', err);
+      setUploadError(err.message || '简历数据加载失败，无法打开编辑器');
     }
   };
 
@@ -256,9 +315,13 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
     try {
       // Fetch full raw text
       const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeItem.id}`);
-      onSelectResumeForMock(data.raw_text || resumeItem.raw_text_preview, resumeItem.filename);
-    } catch {
-      onSelectResumeForMock(resumeItem.raw_text_preview, resumeItem.filename);
+      onSelectResumeForMock(data.raw_text || '', resumeItem.filename);
+    } catch (err: any) {
+      // 拉取全文失败时中止发起，避免用截断的 200 字预览静默降级
+      console.error('Failed to fetch resume for mock:', err);
+      setUploadError(
+        err.message || `无法加载简历 "${resumeItem.filename}" 的全文，已中止发起模拟面试，请稍后重试`
+      );
     }
   };
 
@@ -351,6 +414,12 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
     }
   };
 
+  // 按当前主题取 badge 样式（体检弹窗内使用）
+  const severityBadgeCls = (severity?: string) =>
+    (SEVERITY_BADGES[severity || 'medium'] || SEVERITY_BADGES.medium)[isDark ? 'dark' : 'light'];
+  const gapBadgeCls = (status?: string) =>
+    (GAP_STATUS_META[status || 'weak'] || GAP_STATUS_META.weak)[isDark ? 'dark' : 'light'];
+
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 space-y-6 animate-fade-in">
       {/* 1. Header */}
@@ -431,6 +500,31 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
         <div className="py-20 text-center space-y-3">
           <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
           <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>正在加载简历库...</p>
+        </div>
+      ) : listError ? (
+        <div className={`py-16 text-center border border-dashed rounded-2xl p-8 space-y-4 ${
+          isDark ? 'border-red-800/60 bg-red-950/20' : 'border-red-200 bg-red-50/50'
+        }`}>
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto ${
+            isDark ? 'bg-red-500/10 border border-red-500/20 text-red-400' : 'bg-red-50 border border-red-200 text-red-600'
+          }`}>
+            <AlertCircle className="w-7 h-7" />
+          </div>
+          <div className="space-y-1">
+            <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              简历列表加载失败
+            </h3>
+            <p className={`text-xs max-w-md mx-auto ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              {listError}
+            </p>
+          </div>
+          <button
+            onClick={fetchResumes}
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition cursor-pointer shadow-md shadow-blue-600/20"
+          >
+            <Loader2 className="w-3.5 h-3.5" />
+            <span>重新加载</span>
+          </button>
         </div>
       ) : resumes.length === 0 ? (
         <div className={`py-16 text-center border border-dashed rounded-2xl p-8 space-y-4 ${
@@ -699,11 +793,29 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
             </div>
 
             <div className="space-y-4">
-              {/* Option A: File Upload */}
+              {/* Option A: File Upload (click + real drag & drop) */}
               <div
                 onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragOver(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) handleFileUpload(file);
+                }}
                 className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition space-y-2 group ${
-                  isDark
+                  isDragOver
+                    ? 'border-blue-500 bg-blue-500/10'
+                    : isDark
                     ? 'border-gray-700 hover:border-blue-500/80 bg-gray-950/40 hover:bg-blue-950/10'
                     : 'border-gray-300 hover:border-blue-500 bg-gray-50/70 hover:bg-blue-50/40'
                 }`}
@@ -711,11 +823,12 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.doc,.txt,.md"
+                  accept=".pdf,.docx,.txt,.md,.json"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) handleFileUpload(file);
+                    e.target.value = '';
                   }}
                 />
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center mx-auto group-hover:scale-110 transition ${
@@ -732,7 +845,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                     点击选择简历文件或拖拽至此
                   </span>
                   <p className={`text-[11px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    支持 PDF、Word (.docx)、纯文本 (.txt)、Markdown (.md)
+                    支持 PDF、Word (.docx)、纯文本 (.txt)、Markdown (.md)、JSON，最大 10MB
                   </p>
                 </div>
               </div>
@@ -930,20 +1043,26 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
       {/* 6. AI Polish Modal */}
       {polishingResume && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-3xl max-h-[85vh] rounded-2xl bg-gray-900 border border-gray-800 p-6 flex flex-col shadow-2xl">
+          <div className={`w-full max-w-3xl max-h-[85vh] rounded-2xl border p-6 flex flex-col shadow-2xl transition-colors ${
+            isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'
+          }`}>
             {/* Header */}
-            <div className="flex items-start justify-between border-b border-gray-800 pb-3">
+            <div className={`flex items-start justify-between border-b pb-3 ${
+              isDark ? 'border-gray-800' : 'border-gray-200'
+            }`}>
               <div>
                 <div className="flex items-center space-x-2">
-                  <Wand2 className="w-5 h-5 text-purple-400" />
-                  <h3 className="text-base font-bold text-white">AI 简历体检</h3>
+                  <Wand2 className="w-5 h-5 text-purple-500" />
+                  <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>AI 简历体检</h3>
                 </div>
-                <p className="text-[11px] text-gray-500 mt-0.5">{polishingResume.filename}</p>
+                <p className={`text-[11px] mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>{polishingResume.filename}</p>
               </div>
               <button
                 onClick={closePolish}
                 disabled={applying}
-                className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-40"
+                className={`p-1 rounded transition disabled:opacity-40 ${
+                  isDark ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-700'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -952,8 +1071,12 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
             {/* Body */}
             <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
               {polishError && (
-                <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-700/60 text-red-300 text-xs flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <div className={`p-2.5 rounded-lg border text-xs flex items-center space-x-2 ${
+                  isDark
+                    ? 'bg-red-950/60 border-red-700/60 text-red-300'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}>
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
                   <span>{polishError}</span>
                 </div>
               )}
@@ -961,41 +1084,55 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
               {!polishReport ? (
                 <>
                   {/* Intro & fact-boundary promise */}
-                  <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-1.5">
-                    <div className="text-xs font-bold text-purple-300 flex items-center space-x-1.5">
+                  <div className={`p-3.5 rounded-xl border space-y-1.5 ${
+                    isDark
+                      ? 'bg-purple-950/20 border-purple-800/40'
+                      : 'bg-purple-50/70 border-purple-200'
+                  }`}>
+                    <div className={`text-xs font-bold flex items-center space-x-1.5 ${
+                      isDark ? 'text-purple-300' : 'text-purple-700'
+                    }`}>
                       <Target className="w-3.5 h-3.5" />
                       <span>面试官视角的简历体检</span>
                     </div>
-                    <p className="text-[11px] text-gray-300 leading-relaxed">
+                    <p className={`text-[11px] leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                       AI 将从真实面试官的角度诊断这份简历：JD 匹配缺口、表达质量问题、以及哪些内容会被追问翻车。
                     </p>
-                    <p className="text-[11px] text-purple-300/80 leading-relaxed">
+                    <p className={`text-[11px] leading-relaxed ${isDark ? 'text-purple-300/80' : 'text-purple-700/80'}`}>
                       事实边界：AI 只重组和润色原文，不会编造任何经历；所有改写建议由你逐条确认后生成新版本，原简历不会被修改。
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-300">
+                    <label className={`text-xs font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                       目标岗位 <span className="font-normal text-gray-500">（可选，例如：资深后端工程师）</span>
                     </label>
                     <input
                       type="text"
                       value={polishRole}
                       onChange={(e) => setPolishRole(e.target.value)}
-                      className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                      className={`w-full text-xs px-3 py-2 rounded-lg border placeholder-gray-400 focus:outline-none focus:border-purple-500 ${
+                        isDark
+                          ? 'bg-gray-950 border-gray-800 text-white'
+                          : 'bg-white border-gray-200 text-gray-900'
+                      }`}
                       placeholder="留空则做通用体检；采纳建议时将作为新版本的命名标签"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-300">
+                    <label className={`text-xs font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                       岗位描述 JD <span className="font-normal text-gray-500">（可选，提供后输出匹配度评分与缺口分析）</span>
                     </label>
                     <textarea
                       rows={6}
                       value={polishJd}
                       onChange={(e) => setPolishJd(e.target.value)}
-                      className="w-full text-xs p-3 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y leading-relaxed"
+                      className={`w-full text-xs p-3 rounded-lg border resize-y leading-relaxed placeholder-gray-400 focus:outline-none focus:border-purple-500 ${
+                        isDark
+                          ? 'bg-gray-950 border-gray-800 text-white'
+                          : 'bg-white border-gray-200 text-gray-900'
+                      }`}
                       placeholder="粘贴目标岗位的 JD 全文..."
                     />
                   </div>
@@ -1004,15 +1141,23 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                 <>
                   {/* Overall verdict */}
                   {(polishReport.overall_comment || polishReport.match_score != null) && (
-                    <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-2.5">
+                    <div className={`p-4 rounded-xl border space-y-2.5 ${
+                      isDark
+                        ? 'bg-purple-950/20 border-purple-800/40'
+                        : 'bg-purple-50/70 border-purple-200'
+                    }`}>
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-xs font-bold text-purple-300 flex items-center space-x-1.5">
+                        <div className={`text-xs font-bold flex items-center space-x-1.5 ${
+                          isDark ? 'text-purple-300' : 'text-purple-700'
+                        }`}>
                           <Target className="w-3.5 h-3.5" />
                           <span>总体诊断</span>
                         </div>
                         {polishReport.match_score != null && (
                           <div className="flex items-center space-x-2 shrink-0">
-                            <div className="w-28 h-1.5 rounded-full bg-gray-800 overflow-hidden">
+                            <div className={`w-28 h-1.5 rounded-full overflow-hidden ${
+                              isDark ? 'bg-gray-800' : 'bg-gray-200'
+                            }`}>
                               <div
                                 className={`h-full rounded-full transition-all ${
                                   polishReport.match_score >= 80
@@ -1024,7 +1169,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                                 style={{ width: `${Math.max(2, polishReport.match_score)}%` }}
                               />
                             </div>
-                            <span className="text-xs font-bold text-white">
+                            <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                               {polishReport.match_score}
                               <span className="text-[10px] text-gray-500"> /100</span>
                             </span>
@@ -1032,7 +1177,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                         )}
                       </div>
                       {polishReport.overall_comment && (
-                        <p className="text-xs text-gray-300 leading-relaxed">{polishReport.overall_comment}</p>
+                        <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{polishReport.overall_comment}</p>
                       )}
                     </div>
                   )}
@@ -1040,23 +1185,25 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   {/* JD gaps */}
                   {(polishReport.gaps?.length ?? 0) > 0 && (
                     <div className="space-y-2">
-                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
-                        <Briefcase className="w-3.5 h-3.5 text-purple-400" />
+                      <div className={`text-xs font-bold flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <Briefcase className="w-3.5 h-3.5 text-purple-500" />
                         <span>JD 匹配缺口</span>
                       </div>
                       {polishReport.gaps!.map((gap, idx) => {
                         const meta = GAP_STATUS_META[gap.status] || GAP_STATUS_META.weak;
                         return (
-                          <div key={idx} className="p-3 rounded-xl bg-gray-950/40 border border-gray-800 space-y-1.5">
+                          <div key={idx} className={`p-3 rounded-xl border space-y-1.5 ${
+                            isDark ? 'bg-gray-950/40 border-gray-800' : 'bg-gray-50 border-gray-200'
+                          }`}>
                             <div className="flex items-start justify-between gap-2">
-                              <span className="text-xs font-bold text-white">{gap.requirement}</span>
-                              <span className={`shrink-0 px-2 py-0.5 rounded border text-[10px] ${meta.className}`}>
+                              <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{gap.requirement}</span>
+                              <span className={`shrink-0 px-2 py-0.5 rounded border text-[10px] ${gapBadgeCls(gap.status)}`}>
                                 {meta.label}
                               </span>
                             </div>
-                            {gap.evidence && <p className="text-[11px] text-gray-400 leading-relaxed">{gap.evidence}</p>}
+                            {gap.evidence && <p className={`text-[11px] leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{gap.evidence}</p>}
                             {gap.advice && (
-                              <p className="text-[11px] text-purple-300/90 leading-relaxed">建议：{gap.advice}</p>
+                              <p className={`text-[11px] leading-relaxed ${isDark ? 'text-purple-300/90' : 'text-purple-700'}`}>建议：{gap.advice}</p>
                             )}
                           </div>
                         );
@@ -1067,8 +1214,8 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   {/* Adoptable issues */}
                   {(polishReport.issues?.length ?? 0) > 0 && (
                     <div className="space-y-2">
-                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
-                        <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+                      <div className={`text-xs font-bold flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <Wand2 className="w-3.5 h-3.5 text-purple-500" />
                         <span>逐条打磨建议（勾选采纳后将生成新版本）</span>
                       </div>
                       {polishReport.issues!.map((issue, idx) => {
@@ -1078,25 +1225,39 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                           <div
                             key={idx}
                             className={`p-3 rounded-xl border space-y-2 transition ${
-                              checked ? 'border-purple-600/60 bg-purple-950/20' : 'border-gray-800 bg-gray-950/40'
+                              checked
+                                ? isDark
+                                  ? 'border-purple-600/60 bg-purple-950/20'
+                                  : 'border-purple-500/60 bg-purple-50/70'
+                                : isDark
+                                ? 'border-gray-800 bg-gray-950/40'
+                                : 'border-gray-200 bg-gray-50'
                             } ${!canAdopt ? 'opacity-60' : ''}`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                                <span className={`px-2 py-0.5 rounded border text-[10px] ${SEVERITY_BADGES[issue.severity || 'medium'] || SEVERITY_BADGES.medium}`}>
+                                <span className={`px-2 py-0.5 rounded border text-[10px] ${severityBadgeCls(issue.severity)}`}>
                                   {SEVERITY_LABELS[issue.severity || 'medium'] || '中等'}
                                 </span>
-                                <span className="px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 text-[10px] border border-gray-700/60">
+                                <span className={`px-2 py-0.5 rounded text-[10px] border ${
+                                  isDark
+                                    ? 'bg-gray-800/80 text-gray-300 border-gray-700/60'
+                                    : 'bg-gray-100 text-gray-600 border-gray-200'
+                                }`}>
                                   {ISSUE_TYPE_LABELS[issue.type || ''] || '表达优化'}
                                 </span>
                               </div>
                               {canAdopt ? (
-                                <label className="flex items-center space-x-1.5 text-[11px] text-gray-300 cursor-pointer select-none shrink-0">
+                                <label className={`flex items-center space-x-1.5 text-[11px] cursor-pointer select-none shrink-0 ${
+                                  isDark ? 'text-gray-300' : 'text-gray-700'
+                                }`}>
                                   <input
                                     type="checkbox"
                                     checked={checked}
                                     onChange={() => toggleAdopt(idx)}
-                                    className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-950 accent-purple-600 cursor-pointer"
+                                    className={`w-3.5 h-3.5 rounded accent-purple-600 cursor-pointer ${
+                                      isDark ? 'border-gray-600 bg-gray-950' : 'border-gray-300 bg-white'
+                                    }`}
                                   />
                                   <span>采纳</span>
                                 </label>
@@ -1104,14 +1265,22 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                                 <span className="text-[10px] text-gray-500 shrink-0">无法定位原文</span>
                               )}
                             </div>
-                            <div className="p-2 rounded-lg bg-gray-900 border border-gray-800 text-[11px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed">
+                            <div className={`p-2 rounded-lg border text-[11px] font-mono whitespace-pre-wrap leading-relaxed ${
+                              isDark
+                                ? 'bg-gray-900 border-gray-800 text-gray-300'
+                                : 'bg-gray-100/70 border-gray-200 text-gray-700'
+                            }`}>
                               {issue.quote}
                             </div>
                             {issue.problem && (
-                              <p className="text-[11px] text-gray-400 leading-relaxed">问题：{issue.problem}</p>
+                              <p className={`text-[11px] leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>问题：{issue.problem}</p>
                             )}
                             {canAdopt && (
-                              <div className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-[11px] text-emerald-200 whitespace-pre-wrap leading-relaxed">
+                              <div className={`p-2 rounded-lg border text-[11px] whitespace-pre-wrap leading-relaxed ${
+                                isDark
+                                  ? 'bg-emerald-950/30 border-emerald-800/40 text-emerald-200'
+                                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                              }`}>
                                 {issue.rewritten}
                               </div>
                             )}
@@ -1127,19 +1296,23 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   {/* Interviewer challenge risks */}
                   {(polishReport.challenge_risks?.length ?? 0) > 0 && (
                     <div className="space-y-2">
-                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
+                      <div className={`text-xs font-bold flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                         <span>追问风险（面试官视角）</span>
                       </div>
                       {polishReport.challenge_risks!.map((risk, idx) => (
-                        <div key={idx} className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 space-y-1.5">
+                        <div key={idx} className={`p-3 rounded-xl border space-y-1.5 ${
+                          isDark
+                            ? 'bg-amber-950/20 border-amber-800/40'
+                            : 'bg-amber-50/70 border-amber-200'
+                        }`}>
                           {risk.quote && (
-                            <p className="text-[11px] text-gray-400 font-mono">「{risk.quote}」</p>
+                            <p className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>「{risk.quote}」</p>
                           )}
                           {risk.likely_question && (
-                            <p className="text-xs text-amber-200 leading-relaxed">可能的追问：{risk.likely_question}</p>
+                            <p className={`text-xs leading-relaxed ${isDark ? 'text-amber-200' : 'text-amber-800'}`}>可能的追问：{risk.likely_question}</p>
                           )}
-                          {risk.advice && <p className="text-[11px] text-gray-400 leading-relaxed">应对：{risk.advice}</p>}
+                          {risk.advice && <p className={`text-[11px] leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>应对：{risk.advice}</p>}
                         </div>
                       ))}
                     </div>
@@ -1148,13 +1321,15 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   {/* General tips */}
                   {(polishReport.general_tips?.length ?? 0) > 0 && (
                     <div className="space-y-2">
-                      <div className="text-xs font-bold text-gray-300 flex items-center space-x-1.5">
+                      <div className={`text-xs font-bold flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         <Lightbulb className="w-3.5 h-3.5 text-yellow-400" />
                         <span>整体建议</span>
                       </div>
-                      <ul className="p-3 rounded-xl bg-gray-950/40 border border-gray-800 space-y-1.5 list-disc list-inside">
+                      <ul className={`p-3 rounded-xl border space-y-1.5 list-disc list-inside ${
+                        isDark ? 'bg-gray-950/40 border-gray-800' : 'bg-gray-50 border-gray-200'
+                      }`}>
                         {polishReport.general_tips!.map((tip, idx) => (
-                          <li key={idx} className="text-[11px] text-gray-300 leading-relaxed">{tip}</li>
+                          <li key={idx} className={`text-[11px] leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{tip}</li>
                         ))}
                       </ul>
                     </div>
@@ -1164,7 +1339,9 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="pt-3 border-t border-gray-800 flex items-center justify-between gap-3">
+            <div className={`pt-3 border-t flex items-center justify-between gap-3 ${
+              isDark ? 'border-gray-800' : 'border-gray-200'
+            }`}>
               <p className="text-[11px] text-gray-500 min-w-0">
                 {polishReport
                   ? `已选 ${adoptedIdx.length} 条建议 · 生成新简历副本，原件不动`
@@ -1174,7 +1351,11 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                 <button
                   onClick={closePolish}
                   disabled={applying}
-                  className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-xs font-medium transition cursor-pointer disabled:opacity-50"
+                  className={`px-4 py-2 rounded-lg border text-xs font-medium transition cursor-pointer disabled:opacity-50 ${
+                    isDark
+                      ? 'border-gray-700 text-gray-300 hover:text-white'
+                      : 'border-gray-300 text-gray-700 hover:text-gray-900'
+                  }`}
                 >
                   取消
                 </button>
@@ -1216,6 +1397,50 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Delete Confirm Modal */}
+      {deletingTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className={`w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl transition-colors ${
+            isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'
+          }`}>
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-red-500/10 border border-red-500/30 text-red-500">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  确认删除简历
+                </h3>
+                <p className={`text-xs leading-relaxed break-all ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  确定要删除 <span className={`font-semibold ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>"{deletingTarget.filename}"</span> 吗？删除后不可恢复。
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end space-x-2 pt-1">
+              <button
+                onClick={() => setDeletingTarget(null)}
+                disabled={deleting}
+                className={`px-4 py-2 rounded-lg border text-xs font-medium transition cursor-pointer disabled:opacity-50 ${
+                  isDark
+                    ? 'border-gray-700 text-gray-300 hover:text-white'
+                    : 'border-gray-300 text-gray-700 hover:text-gray-900'
+                }`}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-semibold shadow-md shadow-red-600/20 transition cursor-pointer"
+              >
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>{deleting ? '删除中...' : '确认删除'}</span>
+              </button>
             </div>
           </div>
         </div>
