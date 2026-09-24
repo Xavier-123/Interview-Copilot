@@ -251,23 +251,21 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 <div>
                   {/* Card Header */}
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        type="button"
-                        onClick={(e) => toggleSelect(item.session_id, e)}
-                        className="text-content-secondary hover:text-brand-primary p-0.5"
-                        title="勾选用于对比（恰好 2 场）或批量删除"
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-brand-primary" />
-                        ) : (
-                          <Square className="w-4 h-4 text-content-muted" />
-                        )}
-                      </button>
+                    <button
+                      type="button"
+                      onClick={(e) => toggleSelect(item.session_id, e)}
+                      className="flex items-center space-x-2 text-left py-1 -my-1 pr-2 rounded transition hover:bg-surface-hover"
+                      title="勾选用于对比（恰好 2 场）或批量删除"
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="w-4 h-4 text-brand-primary shrink-0" />
+                      ) : (
+                        <Square className="w-4 h-4 text-content-muted shrink-0" />
+                      )}
                       <span className="text-xs font-bold text-content-primary truncate max-w-[200px]">
                         {item.title}
                       </span>
-                    </div>
+                    </button>
 
                     <div className="flex items-center space-x-2">
                       {item.match_verdict && (

@@ -415,74 +415,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </div>
 
-          {/* Card 2: 模拟面试 */}
-          <div
-            onClick={() => onNavigate('setup')}
-            className={`group relative rounded-2xl border p-6 transition-all duration-200 hover:-translate-y-1 cursor-pointer flex flex-col justify-between ${
-              isDark
-                ? 'bg-gray-900/70 border-blue-700/50 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-950/30'
-                : 'bg-white border-blue-200/90 hover:border-blue-400 shadow-[0_1px_3px_0_rgba(0,0,0,0.02),0_4px_16px_rgba(15,23,42,0.04)] hover:shadow-xl hover:shadow-blue-500/10'
-            }`}
-          >
-            <div className="space-y-4">
-              <div
-                className={`w-12 h-12 rounded-xl flex items-center justify-center transition group-hover:scale-110 ${
-                  isDark
-                    ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400 group-hover:bg-blue-500/20'
-                    : 'bg-blue-50 border border-blue-200 text-blue-600 group-hover:bg-blue-100'
-                }`}
-              >
-                <Bot className="w-6 h-6" />
-              </div>
-              <div>
-                <h3
-                  className={`text-lg font-bold transition flex items-center justify-between ${
-                    isDark ? 'text-white group-hover:text-blue-300' : 'text-slate-900 group-hover:text-blue-600'
-                  }`}
-                >
-                  <span>模拟面试</span>
-                  <span
-                    className={`text-xs font-normal px-2 py-0.5 rounded-full border ${
-                      isDark
-                        ? 'text-blue-400 bg-blue-950/60 border-blue-800/40'
-                        : 'text-blue-700 bg-blue-50 border-blue-200'
-                    }`}
-                  >
-                    多 Agent
-                  </span>
-                </h3>
-                <p className={`text-xs mt-2 leading-relaxed ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
-                  主考官、技术专家、HR与压力挑战官协同发问。具备实时答题求助 (Lifeline) 与联网知识核查。
-                </p>
-              </div>
-
-              <div
-                className={`space-y-2 pt-2 border-t text-xs ${
-                  isDark ? 'border-gray-800/60 text-gray-400' : 'border-slate-100 text-slate-600'
-                }`}
-              >
-                <div className="flex items-center space-x-1.5">
-                  <CheckCircle2 className={`w-3.5 h-3.5 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
-                  <span>多流派专家阵容（架构/算法/行为STAR/压力）</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                  <CheckCircle2 className={`w-3.5 h-3.5 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
-                  <span>生成六维雷达图与逐题“黄金优化示范”</span>
-                </div>
-              </div>
-            </div>
-
-            <div
-              className={`mt-6 pt-4 border-t flex items-center justify-between text-xs font-medium group-hover:translate-x-1 transition-transform ${
-                isDark ? 'border-gray-800/60 text-blue-400' : 'border-slate-100 text-blue-600'
-              }`}
-            >
-              <span>开始全真模拟对练</span>
-              <ArrowRight className="w-4 h-4" />
-            </div>
-          </div>
-
-          {/* Card 3: 面试管理 */}
+          {/* Card 2: 面试管理 */}
           <div
             onClick={() => onNavigate('interviews')}
             className={`group relative rounded-2xl border p-6 transition-all duration-200 hover:-translate-y-1 cursor-pointer flex flex-col justify-between ${
@@ -545,6 +478,73 @@ export const HomeView: React.FC<HomeViewProps> = ({
               }`}
             >
               <span>查看面试日程与战报</span>
+              <ArrowRight className="w-4 h-4" />
+            </div>
+          </div>
+
+          {/* Card 3: 模拟面试 */}
+          <div
+            onClick={() => onNavigate('setup')}
+            className={`group relative rounded-2xl border p-6 transition-all duration-200 hover:-translate-y-1 cursor-pointer flex flex-col justify-between ${
+              isDark
+                ? 'bg-gray-900/70 border-blue-700/50 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-950/30'
+                : 'bg-white border-blue-200/90 hover:border-blue-400 shadow-[0_1px_3px_0_rgba(0,0,0,0.02),0_4px_16px_rgba(15,23,42,0.04)] hover:shadow-xl hover:shadow-blue-500/10'
+            }`}
+          >
+            <div className="space-y-4">
+              <div
+                className={`w-12 h-12 rounded-xl flex items-center justify-center transition group-hover:scale-110 ${
+                  isDark
+                    ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400 group-hover:bg-blue-500/20'
+                    : 'bg-blue-50 border border-blue-200 text-blue-600 group-hover:bg-blue-100'
+                }`}
+              >
+                <Bot className="w-6 h-6" />
+              </div>
+              <div>
+                <h3
+                  className={`text-lg font-bold transition flex items-center justify-between ${
+                    isDark ? 'text-white group-hover:text-blue-300' : 'text-slate-900 group-hover:text-blue-600'
+                  }`}
+                >
+                  <span>模拟面试</span>
+                  <span
+                    className={`text-xs font-normal px-2 py-0.5 rounded-full border ${
+                      isDark
+                        ? 'text-blue-400 bg-blue-950/60 border-blue-800/40'
+                        : 'text-blue-700 bg-blue-50 border-blue-200'
+                    }`}
+                  >
+                    多 Agent
+                  </span>
+                </h3>
+                <p className={`text-xs mt-2 leading-relaxed ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
+                  主考官、技术专家、HR与压力挑战官协同发问。具备实时答题求助 (Lifeline) 与联网知识核查。
+                </p>
+              </div>
+
+              <div
+                className={`space-y-2 pt-2 border-t text-xs ${
+                  isDark ? 'border-gray-800/60 text-gray-400' : 'border-slate-100 text-slate-600'
+                }`}
+              >
+                <div className="flex items-center space-x-1.5">
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
+                  <span>多流派专家阵容（架构/算法/行为STAR/压力）</span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
+                  <span>生成六维雷达图与逐题“黄金优化示范”</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className={`mt-6 pt-4 border-t flex items-center justify-between text-xs font-medium group-hover:translate-x-1 transition-transform ${
+                isDark ? 'border-gray-800/60 text-blue-400' : 'border-slate-100 text-blue-600'
+              }`}
+            >
+              <span>开始全真模拟对练</span>
               <ArrowRight className="w-4 h-4" />
             </div>
           </div>
