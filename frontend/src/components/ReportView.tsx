@@ -8,11 +8,9 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import {
-  Award,
   TrendingUp,
   CheckCircle,
   AlertTriangle,
-  BookOpen,
   ArrowLeft,
   ArrowRight,
   RotateCcw,
@@ -23,21 +21,36 @@ import {
   Target,
   Check,
   Download,
-  Zap
+  Share2,
+  Trophy,
+  Zap,
+  BookOpen,
 } from 'lucide-react';
 import type { EvaluationReport, DrillCardItem } from '../types';
+import { useTheme } from '../context/ThemeContext';
+import { ScorecardShareModal } from './ScorecardShareModal';
 
 interface ReportViewProps {
   report: EvaluationReport;
   onRestart: () => void;
+  onRechallenge?: () => void;
   sessionId?: string;
   /** 返回上一页（历史档案或控制台）；不传则不显示返回按钮 */
   onBack?: () => void;
   backLabel?: string;
 }
 
-export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessionId, onBack, backLabel = '返回' }) => {
+export const ReportView: React.FC<ReportViewProps> = ({
+  report,
+  onRestart,
+  onRechallenge,
+  sessionId,
+  onBack,
+  backLabel = '返回',
+}) => {
+  const { isDark } = useTheme();
   const [copied, setCopied] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [activeDrillModal, setActiveDrillModal] = useState<DrillCardItem | null>(null);
   const [drillAnswer, setDrillAnswer] = useState('');
   const [drillSubmitted, setDrillSubmitted] = useState(false);
@@ -49,6 +62,37 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
     { subject: 'STAR规范', score: report.radar_scores.star_completeness, fullMark: 10 },
     { subject: '抗压韧性', score: report.radar_scores.stress_resilience, fullMark: 10 },
     { subject: '岗位契合', score: report.radar_scores.job_matching, fullMark: 10 },
+  ];
+
+  // Calculate composite score (0-100) & tier
+  const scores = report.radar_scores;
+  const avg =
+    (scores.technical_depth +
+      scores.technical_breadth +
+      scores.communication_logic +
+      scores.star_completeness +
+      scores.stress_resilience +
+      scores.job_matching) /
+    6;
+  const compositeScore = Math.min(100, Math.round(avg * 10));
+
+  const getTierInfo = (score: number) => {
+    if (score >= 90) return { tier: 'S', label: '卓越强推', badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', beat: '96%' };
+    if (score >= 80) return { tier: 'A+', label: '建议录用', badge: 'bg-blue-500/20 text-blue-300 border-blue-500/40', beat: '88%' };
+    if (score >= 70) return { tier: 'A', label: '契合度高', badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40', beat: '76%' };
+    if (score >= 60) return { tier: 'B', label: '具备潜力', badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40', beat: '58%' };
+    return { tier: 'C', label: '待加练提升', badge: 'bg-red-500/20 text-red-300 border-red-500/40', beat: '32%' };
+  };
+
+  const tierInfo = getTierInfo(compositeScore);
+
+  const radarMetrics = [
+    { label: '技术深度', val: scores.technical_depth, max: 10 },
+    { label: '技术广度', val: scores.technical_breadth, max: 10 },
+    { label: '表达逻辑', val: scores.communication_logic, max: 10 },
+    { label: 'STAR规范', val: scores.star_completeness, max: 10 },
+    { label: '抗压韧性', val: scores.stress_resilience, max: 10 },
+    { label: '岗位契合', val: scores.job_matching, max: 10 },
   ];
 
   const getVerdictStyle = (verdict: string) => {
@@ -64,6 +108,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
   const handleCopyMarkdown = () => {
     const mdLines = [
       `# 模拟面试多维能力诊断报告`,
+      `**综合评级**：${tierInfo.tier} 级 · ${tierInfo.label}（${compositeScore} 分）`,
       `**综合结论**：${report.match_verdict}`,
       `\n**总体评估**：\n${report.overall_summary}\n`,
       `### 六维能力得分`,
@@ -88,110 +133,207 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4 space-y-8 print:p-0 print:space-y-4">
-      {/* Back Navigation */}
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center space-x-1.5 text-xs text-gray-400 hover:text-white transition print:hidden"
+    <div className={`min-h-screen py-8 px-4 transition-colors duration-200 ${isDark ? 'bg-[#0B0F17] text-gray-100' : 'bg-[#F8FAFC] text-gray-800'}`}>
+      <div className="max-w-5xl mx-auto space-y-8 print:p-0 print:space-y-4">
+        {/* Back Navigation */}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className={`inline-flex items-center space-x-1.5 text-xs transition print:hidden cursor-pointer ${
+              isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>{backLabel}</span>
+          </button>
+        )}
+
+        {/* 1. Header & Overall Hero Verdict */}
+        <div
+          className={`rounded-3xl p-6 sm:p-8 border shadow-xl relative overflow-hidden transition-all print:border-none print:shadow-none ${
+            isDark
+              ? 'bg-gradient-to-b from-[#111827] via-[#0F172A] to-[#0B0F19] border-gray-800 text-white'
+              : 'bg-white border-gray-200 text-gray-900 shadow-card'
+          }`}
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>{backLabel}</span>
-        </button>
-      )}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* 1. Header & Overall Verdict */}
-      <div className="bg-gray-900/80 border border-gray-800 rounded-3xl p-6 sm:p-8 backdrop-blur shadow-xl relative overflow-hidden print:border-none print:shadow-none">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-900/40 border border-blue-700/50 text-blue-300 text-xs font-medium mb-2">
-              <Award className="w-3.5 h-3.5 text-blue-400" />
-              <span>多 Agent 模拟面试诊断书</span>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-400 text-xs font-semibold">
+                <Trophy className="w-3.5 h-3.5 text-blue-400" />
+                <span>多 Agent 模拟面试诊断认证</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                模拟面试多维能力诊断报告
+              </h1>
+              <p className={`text-xs max-w-xl ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                基于多位面试官协同博弈与影子观察员全维度质检，为您输出客观量化战报与个性化冲刺建议。
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-              模拟面试多维能力诊断报告
-            </h1>
-          </div>
 
-          <div className="flex items-center space-x-3">
+            {/* Hero Score Badge & Quick Actions */}
             <div
-              className={`px-5 py-2.5 rounded-2xl border flex items-center space-x-2.5 shadow-md ${getVerdictStyle(
-                report.match_verdict
-              )}`}
+              className={`flex flex-wrap items-center gap-4 p-4 rounded-2xl border backdrop-blur-sm self-start lg:self-auto ${
+                isDark ? 'bg-black/40 border-white/5' : 'bg-gray-50 border-gray-200'
+              }`}
             >
-              <Sparkles className="w-5 h-5 shrink-0" />
-              <div>
-                <div className="text-[10px] uppercase font-semibold opacity-80">综合面试结论</div>
-                <div className="text-lg font-bold">{report.match_verdict}</div>
+              <div className="flex items-baseline space-x-1.5">
+                <span className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-sky-300 to-emerald-400 tabular-nums">
+                  {compositeScore}
+                </span>
+                <span className="text-gray-400 text-xs font-semibold">/ 100分</span>
+              </div>
+
+              <div className="space-y-1">
+                <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${tierInfo.badge}`}>
+                  {tierInfo.tier} 级 · {tierInfo.label}
+                </span>
+                <div className="text-[11px] text-gray-400">
+                  🔥 战胜全网 <span className="text-emerald-400 font-bold">{tierInfo.beat}</span> 候选人
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex items-center space-x-2 border-l border-gray-700/40 pl-3">
+                <button
+                  type="button"
+                  onClick={() => setShowShareModal(true)}
+                  className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md shadow-blue-500/20 transition cursor-pointer"
+                  title="生成精美战报卡并分享"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>分享战报</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onRechallenge || onRestart}
+                  className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-md shadow-emerald-500/20 transition cursor-pointer"
+                  title="以当前配置重新发起模拟挑战"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>再次挑战</span>
+                </button>
+
+                <div className="flex items-center space-x-1">
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className={`p-2 rounded-xl border transition cursor-pointer ${
+                      isDark ? 'border-gray-800 hover:bg-gray-800 text-gray-400 hover:text-white' : 'border-gray-300 hover:bg-gray-100 text-gray-600'
+                    }`}
+                    title="打印 / 导出 PDF"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyMarkdown}
+                    className={`p-2 rounded-xl border transition cursor-pointer ${
+                      isDark ? 'border-gray-800 hover:bg-gray-800 text-gray-400 hover:text-white' : 'border-gray-300 hover:bg-gray-100 text-gray-600'
+                    }`}
+                    title="复制 Markdown 报告"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  {sessionId && (
+                    <a
+                      href={`/api/v1/interviews/${sessionId}/export?format=markdown`}
+                      download
+                      className={`p-2 rounded-xl border transition cursor-pointer ${
+                        isDark ? 'border-gray-800 hover:bg-gray-800 text-gray-400 hover:text-white' : 'border-gray-300 hover:bg-gray-100 text-gray-600'
+                      }`}
+                      title="下载完整面试对话（Markdown）"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Print & Copy Buttons */}
-            <div className="flex flex-col gap-1.5 print:hidden">
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs flex items-center space-x-1 transition"
-                title="导出为 PDF / 打印报告"
-              >
-                <Printer className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyMarkdown}
-                className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs flex items-center space-x-1 transition"
-                title="复制 Markdown 文本"
-              >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-              {sessionId && (
-                <a
-                  href={`/api/v1/interviews/${sessionId}/export?format=markdown`}
-                  download
-                  className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs flex items-center space-x-1 transition"
-                  title="下载完整面试对话与报告（Markdown）"
-                >
-                  <Download className="w-4 h-4" />
-                </a>
-              )}
+          {/* Overall Conclusion Banner */}
+          <div
+            className={`p-4 rounded-2xl border text-xs leading-relaxed flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              isDark ? 'bg-gray-950/70 border-gray-800 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-700'
+            }`}
+          >
+            <div>
+              <span className="font-bold text-blue-500 mr-2">【综合考评结论】</span>
+              <span>{report.overall_summary}</span>
+            </div>
+            <span className={`shrink-0 px-3 py-1 rounded-xl text-xs font-bold border self-start sm:self-auto ${getVerdictStyle(report.match_verdict)}`}>
+              {report.match_verdict}
+            </span>
+          </div>
+        </div>
+
+        {/* 2. Radar Chart & Six-Dimension Bars */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Radar Chart */}
+          <div
+            className={`lg:col-span-6 rounded-3xl p-6 border flex flex-col items-center justify-between ${
+              isDark ? 'bg-gray-900/80 border-gray-800' : 'bg-white border-gray-200 shadow-card'
+            }`}
+          >
+            <div className="w-full flex items-center justify-between mb-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider flex items-center space-x-2 text-blue-500">
+                <TrendingUp className="w-4 h-4" />
+                <span>六维能力雷达图 (Competency Radar)</span>
+              </h2>
+              <span className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>各维度 10 分制</span>
+            </div>
+
+            <div className="w-full h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                  <PolarGrid stroke={isDark ? '#374151' : '#E2E8F0'} strokeDasharray="3 3" />
+                  <PolarAngleAxis
+                    dataKey="subject"
+                    stroke={isDark ? '#9ca3af' : '#64748B'}
+                    tick={{ fill: isDark ? '#d1d5db' : '#334155', fontSize: 11 }}
+                  />
+                  <PolarRadiusAxis angle={30} domain={[0, 10]} stroke={isDark ? '#4b5563' : '#CBD5E1'} />
+                  <Radar
+                    name="候选人得分"
+                    dataKey="score"
+                    stroke="#3b82f6"
+                    fill="#3b82f6"
+                    fillOpacity={0.4}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Six Dimension Bars */}
+            <div className={`w-full grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-3 border-t ${isDark ? 'border-gray-800' : 'border-gray-200'}`}>
+              {radarMetrics.map((item, idx) => {
+                const percent = Math.round((item.val / item.max) * 100);
+                return (
+                  <div
+                    key={idx}
+                    className={`p-2.5 rounded-xl border ${
+                      isDark ? 'bg-gray-950/60 border-gray-800' : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.label}</span>
+                      <span className="font-mono font-bold text-blue-500">{item.val}</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-gray-800/40 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full transition-all duration-500"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-
-        <p className="text-sm text-gray-300 leading-relaxed bg-gray-950/60 border border-gray-800 rounded-2xl p-4">
-          {report.overall_summary}
-        </p>
-      </div>
-
-      {/* 2. Radar Chart & Core Strengths / Weaknesses */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Radar Chart */}
-        <div className="lg:col-span-6 bg-gray-900/80 border border-gray-800 rounded-3xl p-6 flex flex-col items-center justify-center">
-          <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wider mb-2 self-start flex items-center space-x-2">
-            <TrendingUp className="w-4 h-4 text-blue-400" />
-            <span>六维能力雷达图 (Competency Radar)</span>
-          </h2>
-
-          <div className="w-full h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
-                <PolarGrid stroke="#374151" strokeDasharray="3 3" />
-                <PolarAngleAxis dataKey="subject" stroke="#9ca3af" tick={{ fill: '#d1d5db', fontSize: 11 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 10]} stroke="#4b5563" />
-                <Radar
-                  name="候选人得分"
-                  dataKey="score"
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
-                  fillOpacity={0.4}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
         {/* Strengths & Weaknesses */}
         <div className="lg:col-span-6 space-y-4 flex flex-col justify-between">
@@ -403,15 +545,36 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
         ))}
       </div>
 
-      {/* Restart Footer */}
-      <div className="text-center pt-4 print:hidden">
+      {/* High-Moment Action Footer */}
+      <div className="pt-6 border-t border-gray-800/40 flex flex-wrap items-center justify-center gap-3 print:hidden">
+        <button
+          onClick={onRechallenge || onRestart}
+          className="inline-flex items-center space-x-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-lg shadow-emerald-600/25 cursor-pointer"
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>以相同配置再次发起挑战</span>
+        </button>
+
+        <button
+          onClick={() => setShowShareModal(true)}
+          className="inline-flex items-center space-x-2 px-6 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/25 cursor-pointer"
+        >
+          <Share2 className="w-4 h-4" />
+          <span>生成战报卡并分享</span>
+        </button>
+
         <button
           onClick={onRestart}
-          className="inline-flex items-center space-x-2 px-8 py-3.5 rounded-2xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-xs transition border border-gray-700"
+          className={`inline-flex items-center space-x-2 px-6 py-3.5 rounded-2xl border font-semibold text-xs transition cursor-pointer ${
+            isDark
+              ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700'
+              : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 shadow-sm'
+          }`}
         >
           <RotateCcw className="w-4 h-4" />
-          <span>返回控制台，开启新一轮模拟面试</span>
+          <span>返回控制台</span>
         </button>
+      </div>
       </div>
 
       {/* Interactive Quick Drill Modal */}
@@ -476,6 +639,14 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, onRestart, sessi
           </div>
         </div>
       )}
+
+      {/* Scorecard Share Modal */}
+      <ScorecardShareModal
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        report={report}
+        sessionId={sessionId}
+      />
     </div>
   );
 };

@@ -4,16 +4,22 @@ from httpx import AsyncClient, ASGITransport
 from langchain_core.messages import AIMessage
 
 from app.main import app
-from app.models.persona import InterviewerPersona, PersonaMemoryModel
-from app.models.db import get_db
+from app.core.config import settings
+from app.services.persona_store import PersonaData
 from app.services.evolution.persona_evolver import PersonaEvolver
+
+
+@pytest.fixture(autouse=True)
+def _isolated_persona_dir(tmp_path, monkeypatch):
+    """测试期间把人设 JSON 文件存储指向临时目录，避免污染本地数据。"""
+    monkeypatch.setattr(settings, "PERSONA_DATA_DIR", str(tmp_path / "personas"))
 
 
 @pytest.mark.asyncio
 async def test_persona_evolver_workflow():
     """测试 PersonaEvolver 核心编排：候选人对战、Critic 诊断与优化提案生成。"""
     evolver = PersonaEvolver()
-    test_persona = InterviewerPersona(
+    test_persona = PersonaData(
         id="test-p-1",
         key="test_architect",
         name="大模型架构师",

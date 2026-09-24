@@ -12,7 +12,7 @@ import re
 from typing import Dict, Any, List, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from app.models.persona import InterviewerPersona
+from app.services.persona_store import PersonaData
 from app.services.evolution.synthetic_candidate import synthetic_candidate_agent
 from app.services.evolution.critic import critic_agent
 from app.agents.llm import llm_service
@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 
 
 class PersonaEvolver:
-    """Orchestrates end-to-end simulation, diagnosis, and evolution for an InterviewerPersona."""
+    """Orchestrates end-to-end simulation, diagnosis, and evolution for a custom persona."""
 
     async def run_persona_evolution(
         self,
-        persona: InterviewerPersona,
+        persona: PersonaData,
         target_topic: Optional[str] = None,
         candidate_behavior: str = "vague",
     ) -> Dict[str, Any]:
@@ -162,7 +162,7 @@ class PersonaEvolver:
 
     async def _synthesize_optimization(
         self,
-        persona: InterviewerPersona,
+        persona: PersonaData,
         transcript: List[Dict[str, Any]],
         critic_res: Dict[str, Any],
         topic: str,

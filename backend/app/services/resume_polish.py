@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.messages import HumanMessage
 
-from app.agents.llm import llm_service
+from app.agents.llm import llm_service, LLMResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +70,6 @@ _SEVERITIES = ("high", "medium", "low")
 _ISSUE_TYPES = ("vague", "no_metrics", "overstated", "structure", "risky_claim", "typo")
 _GAP_STATUSES = ("missing", "weak", "covered")
 
-_FALLBACK_REPORT: Dict[str, Any] = {
-    "match_score": None,
-    "overall_comment": "AI 分析暂时不可用，未能生成诊断报告，请稍后重试。",
-    "gaps": [],
-    "issues": [],
-    "challenge_risks": [],
-    "general_tips": [],
-}
-
 
 def _extract_json(content: str) -> Optional[Dict[str, Any]]:
     """从模型输出中提取 JSON（容忍 ```json 围栏）。"""
@@ -106,21 +97,17 @@ class ResumePolishService:
         target_role: Optional[str] = None,
         llm_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """生成结构化诊断报告（不修改简历）。LLM 失败时返回兜底空报告。"""
+        """生成结构化诊断报告（不修改简历）。模型不可用或输出异常时直接抛错，不返回空兜底报告。"""
         prompt = RESUME_POLISH_PROMPT.format(
             target_role=(target_role or "").strip() or "未提供",
             jd_text=(jd_text or "").strip() or "（未提供岗位描述）",
             resume_text=raw_text,
         )
-        try:
-            resp = await llm_service.invoke([HumanMessage(content=prompt)], llm_config=llm_config)
-            report = _extract_json(resp.content)
-            if report is None:
-                logger.warning("Resume polish LLM returned invalid JSON, using fallback report.")
-                return dict(_FALLBACK_REPORT)
-        except Exception as e:
-            logger.warning(f"Resume polish LLM failed: {e}. Using fallback report.")
-            return dict(_FALLBACK_REPORT)
+        resp = await llm_service.invoke([HumanMessage(content=prompt)], llm_config=llm_config)
+        report = _extract_json(resp.content)
+        if report is None:
+            logger.error("Resume polish LLM returned invalid JSON")
+            raise LLMResponseError("模型返回的简历诊断报告不是合法 JSON，请重试。")
         return self._normalize_report(report, raw_text)
 
     def _normalize_report(self, report: Dict[str, Any], raw_text: str) -> Dict[str, Any]:

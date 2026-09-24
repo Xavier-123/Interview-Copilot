@@ -48,7 +48,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
   };
 
   const inputCls =
-    'w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono';
+    'w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-2 text-xs text-content-primary placeholder-content-placeholder focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono';
 
   // 用 Portal 渲染到 body：header 的 backdrop-blur 会成为 fixed 子元素的包含块，导致弹窗贴顶不居中
   return createPortal(
@@ -57,19 +57,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl shadow-black/60"
+        className="w-full max-w-md bg-surface border border-line-default rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line-subtle">
           <div className="flex items-center space-x-2">
-            <Cpu className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-semibold text-gray-100">大模型 API 配置</span>
+            <Cpu className="w-4 h-4 text-brand-primary" />
+            <span className="text-sm font-semibold text-content-primary">大模型 API 配置</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-200 transition-colors"
+            className="text-content-muted hover:text-content-primary transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -77,18 +77,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
 
         {/* Body */}
         <div className="px-5 py-4 space-y-4">
-          <div className="flex items-start space-x-2 text-[11px] text-gray-400 bg-blue-950/40 border border-blue-900/50 rounded-xl p-3 leading-relaxed">
-            <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+          <div className="flex items-start space-x-2 text-[11px] text-content-secondary bg-blue-50 border border-blue-200 dark:bg-blue-950/40 dark:border-blue-900/50 rounded-xl p-3 leading-relaxed">
+            <Info className="w-3.5 h-3.5 text-brand-primary shrink-0 mt-0.5" />
             <span>
-              在此填写后将<strong className="text-blue-300">优先使用</strong>以下配置调用大模型；
-              留空则使用后端 <code className="font-mono text-blue-300">.env</code> 中的默认配置。
+              在此填写后将<strong className="text-brand-primary">优先使用</strong>以下配置调用大模型；
+              留空则使用后端 <code className="font-mono text-brand-primary">.env</code> 中的默认配置。
               API Key 仅保存在本浏览器 localStorage 中。
             </span>
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-              API Base URL <span className="text-gray-600">（OpenAI 兼容地址，可选）</span>
+            <label className="block text-xs text-content-secondary mb-1.5 font-medium">
+              API Base URL <span className="text-content-placeholder">（OpenAI 兼容地址，可选）</span>
             </label>
             <input
               type="text"
@@ -100,8 +100,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-              API Key <span className="text-red-400">*</span>
+            <label className="block text-xs text-content-secondary mb-1.5 font-medium">
+              API Key <span className="text-status-danger">*</span>
             </label>
             <input
               type="password"
@@ -114,8 +114,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-              模型名称 <span className="text-red-400">*</span>
+            <label className="block text-xs text-content-secondary mb-1.5 font-medium">
+              模型名称 <span className="text-status-danger">*</span>
             </label>
             <input
               type="text"
@@ -127,8 +127,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-              Temperature <span className="text-gray-600">（可选，默认 0.7）</span>
+            <label className="block text-xs text-content-secondary mb-1.5 font-medium">
+              Temperature <span className="text-content-placeholder">（可选，默认 0.7）</span>
             </label>
             <input
               type="number"
@@ -143,11 +143,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-gray-800">
+        <div className="flex items-center justify-between px-5 py-4 border-t border-line-subtle">
           <button
             type="button"
             onClick={handleClear}
-            className="flex items-center space-x-1.5 text-xs text-gray-400 hover:text-red-300 px-3 py-2 rounded-lg border border-gray-800 hover:border-red-900/60 transition-colors"
+            className="flex items-center space-x-1.5 text-xs text-content-secondary hover:text-status-danger px-3 py-2 rounded-lg border border-line-default hover:border-status-danger-border transition-colors"
           >
             <Eraser className="w-3.5 h-3.5" />
             <span>清空（用后端配置）</span>

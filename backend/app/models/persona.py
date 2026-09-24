@@ -1,37 +1,11 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, JSON, Boolean, Float
+from sqlalchemy import Column, String, DateTime, Text, JSON, Float
 from app.models.db import Base
 
-
-class InterviewerPersona(Base):
-    """用户自定义面试官角色（人设）。
-
-    运行时以快照形式写入会话 custom_config.personas，编辑/删除人设
-    不影响已创建会话的回放与继续作答。
-    """
-    __tablename__ = "interviewer_personas"
-
-    id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
-    key = Column(String(32), unique=True, index=True, nullable=False)  # 形如 persona_xxxx，用作消息 name 与路由标识
-    name = Column(String(64), nullable=False)                          # 显示名，如“毒舌架构师”
-    avatar = Column(String(8), default="🎭")                            # 头像 emoji
-    description = Column(String(128), default="")                       # 一句话简介
-    system_prompt = Column(Text, nullable=False)                        # 人设正文（背景/专业领域/提问策略）
-    focus_topics = Column(JSON, default=list)                           # 考察重点标签
-    opening_hint = Column(Text, default="")                             # 首题引导语
-    deep_dive_hint = Column(Text, default="")                           # DEEP_DIVE 追问引导语
-    probe_hint = Column(Text, default="")                               # PROBE_WEAKNESS 补漏引导语
-    switch_hint = Column(Text, default="")                              # SWITCH_TOPIC 换题引导语
-    # ── 流派画像矩阵与考核特征 ─────────────────────────────────────────
-    school_of_thought = Column(String(32), default="standard")         # incident_first | deep_source | business_roi | anti_cheat | standard
-    dislikes = Column(JSON, default=list)                               # 反感项清单（如：背诵八股、假大空架构、只给结论不给推演）
-    preferences = Column(JSON, default=list)                            # 偏好清单（如：踩坑复盘、单机极限性能、真实ROI）
-    skepticism_level = Column(Float, default=0.5)                       # 怀疑度阈值 (0.0 - 1.0)，越高越倾向挑刺与质疑
-    interaction_traits = Column(JSON, default=dict)                     # 互动风格（如 tone, interrupt_frequency 等）
-    enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+# 说明：用户自定义面试官角色（人设）已迁移为 JSON 文件存储
+# （app/services/persona_store.py，目录见 settings.PERSONA_DATA_DIR），
+# 不再使用数据库表；本模块仅保留面试官自我演进记忆库。
 
 
 class PersonaMemoryModel(Base):

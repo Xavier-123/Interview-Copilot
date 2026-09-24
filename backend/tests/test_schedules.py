@@ -111,3 +111,36 @@ async def test_schedule_salary_and_declined():
 
         delete_res = await client.delete(f"/api/v1/schedules/{schedule_id}")
         assert delete_res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_written_assessment_schedule():
+    await init_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        target_time = (datetime.utcnow() + timedelta(days=1)).isoformat()
+        create_res = await client.post("/api/v1/schedules", json={
+            "company": "算法前沿科技",
+            "job_role": "算法工程师",
+            "interview_round": "在线笔试 / 机试",
+            "scheduled_at": target_time,
+            "location_type": "online",
+            "meeting_link_or_address": "https://exam.nowcoder.com/test/123",
+            "status": "upcoming",
+            "notes": "重点刷二叉树、动态规划和ACM输入输出"
+        })
+        assert create_res.status_code == 200
+        schedule = create_res.json()["schedule"]
+        schedule_id = schedule["id"]
+        assert schedule["interview_round"] == "在线笔试 / 机试"
+        assert schedule["company"] == "算法前沿科技"
+
+        # Verify detail
+        detail_res = await client.get(f"/api/v1/schedules/{schedule_id}")
+        assert detail_res.status_code == 200
+        assert detail_res.json()["schedule"]["interview_round"] == "在线笔试 / 机试"
+
+        # Cleanup
+        del_res = await client.delete(f"/api/v1/schedules/{schedule_id}")
+        assert del_res.status_code == 200
+

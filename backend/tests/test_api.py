@@ -46,6 +46,17 @@ async def test_api_session_lifecycle():
         assert ans_data["stage"] == "technical"
         assert ans_data["current_interviewer"] == "technical"
 
+        # 3.5 Submit technical answer with code
+        res_code = await client.post(f"/api/v1/interviews/{session_id}/answer", json={
+            "message": "这是我的解题思路与核心实现：",
+            "code": "def binary_search(nums, target):\n    return -1",
+            "code_language": "python"
+        })
+        assert res_code.status_code == 200
+        code_data = res_code.json()
+        assert code_data["current_code"] == "def binary_search(nums, target):\n    return -1"
+        assert code_data["code_language"] == "python"
+
         # 4. Request lifeline
         res_life = await client.post(f"/api/v1/interviews/{session_id}/lifeline")
         assert res_life.status_code == 200

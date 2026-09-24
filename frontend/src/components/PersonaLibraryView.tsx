@@ -158,11 +158,11 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center space-x-2">
-            <Users2 className="w-5 h-5 text-violet-400" />
+          <h1 className="text-xl font-bold text-content-primary flex items-center space-x-2">
+            <Users2 className="w-5 h-5 text-violet-500 dark:text-violet-400" />
             <span>面试官角色库</span>
           </h1>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-content-secondary mt-1">
             设计你自己的面试官人设，在「自选定制面试」中与内置面试官自由组队出场。
           </p>
         </div>
@@ -170,7 +170,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <button
             type="button"
             onClick={onBack}
-            className="text-xs px-3 py-2 rounded-xl bg-gray-900 border border-gray-800 text-gray-300 hover:text-white transition"
+            className="text-xs px-3 py-2 rounded-xl bg-surface border border-line-default text-content-secondary hover:text-content-primary transition"
           >
             返回
           </button>
@@ -188,20 +188,20 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
       {/* Body */}
       {loading ? (
-        <div className="py-20 flex flex-col items-center space-y-3 text-gray-400 text-xs">
+        <div className="py-20 flex flex-col items-center space-y-3 text-content-secondary text-xs">
           <Loader2 className="w-7 h-7 animate-spin text-violet-500" />
           <span>正在加载角色库...</span>
         </div>
       ) : error ? (
-        <div className="py-16 flex flex-col items-center space-y-2 text-gray-400 text-xs">
-          <AlertTriangle className="w-7 h-7 text-amber-400" />
+        <div className="py-16 flex flex-col items-center space-y-2 text-content-secondary text-xs">
+          <AlertTriangle className="w-7 h-7 text-status-warning" />
           <span>{error}</span>
         </div>
       ) : personas.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-950/40 p-12 flex flex-col items-center text-center space-y-3">
-          <Sparkles className="w-8 h-8 text-violet-400/70" />
-          <p className="text-sm text-gray-300 font-medium">还没有自定义面试官角色</p>
-          <p className="text-xs text-gray-500 max-w-md leading-relaxed">
+        <div className="rounded-2xl border border-dashed border-line-default bg-surface-subtle p-12 flex flex-col items-center text-center space-y-3">
+          <Sparkles className="w-8 h-8 text-violet-500/70 dark:text-violet-400/70" />
+          <p className="text-sm text-content-secondary font-medium">还没有自定义面试官角色</p>
+          <p className="text-xs text-content-muted max-w-md leading-relaxed">
             例如：专怼系统设计的架构委员会成员、只考 Kotlin 的 Android 专家、压力拉满的 CFO……
             人设写得多具体，面试就有多真实。
           </p>
@@ -219,19 +219,19 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           {personas.map((p) => (
             <div
               key={p.id}
-              className="group relative rounded-2xl border border-gray-800 bg-gray-900/60 hover:border-violet-700/60 transition p-4 flex flex-col"
+              className="group relative rounded-2xl border border-line-subtle bg-surface hover:border-violet-400 dark:hover:border-violet-700/60 transition p-4 flex flex-col shadow-sm"
             >
               <div className="flex items-start space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-violet-950/40 border border-violet-800/50 flex items-center justify-center text-xl shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-200 dark:bg-violet-950/40 dark:border-violet-800/50 flex items-center justify-center text-xl shrink-0">
                   {p.avatar || '🎭'}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold text-gray-100 truncate">{p.name}</div>
-                  <div className="text-[11px] text-gray-500 truncate">{p.description || '自定义面试官角色'}</div>
+                  <div className="text-sm font-bold text-content-primary truncate">{p.name}</div>
+                  <div className="text-[11px] text-content-muted truncate">{p.description || '自定义面试官角色'}</div>
                 </div>
               </div>
 
-              <p className="text-[11px] text-gray-400 mt-3 leading-relaxed line-clamp-3 flex-1">
+              <p className="text-[11px] text-content-secondary mt-3 leading-relaxed line-clamp-3 flex-1">
                 {p.system_prompt}
               </p>
 
@@ -240,31 +240,31 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   {p.focus_topics.slice(0, 4).map((t) => (
                     <span
                       key={t}
-                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-violet-950/40 border border-violet-900/50 text-violet-300"
+                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-violet-50 border border-violet-200 text-violet-700 dark:bg-violet-950/40 dark:border-violet-900/50 dark:text-violet-300"
                     >
                       {t}
                     </span>
                   ))}
                   {p.focus_topics.length > 4 && (
-                    <span className="text-[10px] px-1.5 py-0.5 text-gray-500">+{p.focus_topics.length - 4}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 text-content-muted">+{p.focus_topics.length - 4}</span>
                   )}
                 </div>
               )}
 
-              <div className="flex items-center justify-end space-x-1.5 mt-3 pt-3 border-t border-gray-800/70">
+              <div className="flex items-center justify-end space-x-1.5 mt-3 pt-3 border-t border-line-subtle">
                 <button
                   type="button"
                   onClick={() => openEvolution(p)}
                   title="通过真实对抗模拟演练并针对性优化此面试官"
-                  className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-violet-950/60 border border-violet-800/50 hover:bg-violet-900/60 text-violet-300 transition"
+                  className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-violet-50 border border-violet-200 hover:bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:border-violet-800/50 dark:hover:bg-violet-900/60 dark:text-violet-300 transition"
                 >
-                  <Sparkles className="w-3 h-3 text-violet-400" />
+                  <Sparkles className="w-3 h-3 text-violet-500 dark:text-violet-400" />
                   <span>一键仿真进化</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => openEdit(p)}
-                  className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                  className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-surface-hover hover:bg-surface-active text-content-secondary transition"
                 >
                   <Pencil className="w-3 h-3" />
                   <span>编辑</span>
@@ -273,7 +273,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   type="button"
                   onClick={() => handleDelete(p.id)}
                   disabled={deletingId === p.id}
-                  className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-red-900/40 hover:text-red-300 text-gray-400 transition disabled:opacity-50"
+                  className="flex items-center space-x-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-surface-hover hover:bg-status-danger-bg hover:text-status-danger text-content-secondary transition disabled:opacity-50"
                 >
                   {deletingId === p.id ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -295,18 +295,18 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           onClick={() => setModalOpen(false)}
         >
           <div
-            className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl max-h-[88vh] flex flex-col shadow-2xl"
+            className="bg-surface border border-line-default rounded-3xl w-full max-w-2xl max-h-[88vh] flex flex-col shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-5 border-b border-gray-800">
-              <h2 className="text-sm font-bold text-white flex items-center space-x-2">
-                <Sparkles className="w-4 h-4 text-violet-400" />
+            <div className="flex items-center justify-between p-5 border-b border-line-subtle">
+              <h2 className="text-sm font-bold text-content-primary flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-violet-500 dark:text-violet-400" />
                 <span>{editingId ? '编辑面试官角色' : '新建面试官角色'}</span>
               </h2>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                className="p-1.5 rounded-lg text-content-secondary hover:text-content-primary hover:bg-surface-hover transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -315,18 +315,18 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">角色名称 *</label>
+                  <label className="block text-xs text-content-secondary mb-1">角色名称 *</label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => updateForm({ name: e.target.value })}
                     placeholder="如：毒舌架构师"
                     maxLength={32}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-200 focus:outline-none focus:border-violet-500"
+                    className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-xs text-content-primary focus:outline-none focus:border-violet-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">头像</label>
+                  <label className="block text-xs text-content-secondary mb-1">头像</label>
                   <div className="flex flex-wrap gap-1">
                     {AVATAR_OPTIONS.map((emoji) => (
                       <button
@@ -335,8 +335,8 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         onClick={() => updateForm({ avatar: emoji })}
                         className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center border transition ${
                           form.avatar === emoji
-                            ? 'bg-violet-600/30 border-violet-500'
-                            : 'bg-gray-950 border-gray-800 hover:border-gray-600'
+                            ? 'bg-violet-100 border-violet-400 dark:bg-violet-600/30 dark:border-violet-500'
+                            : 'bg-surface-subtle border-line-default hover:border-line-focus'
                         }`}
                       >
                         {emoji}
@@ -347,19 +347,19 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1">一句话简介</label>
+                <label className="block text-xs text-content-secondary mb-1">一句话简介</label>
                 <input
                   type="text"
                   value={form.description}
                   onChange={(e) => updateForm({ description: e.target.value })}
                   placeholder="如：以毒舌著称的架构委员会成员，专怼系统设计"
                   maxLength={128}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-200 focus:outline-none focus:border-violet-500"
+                  className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-xs text-content-primary focus:outline-none focus:border-violet-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1">
+                <label className="block text-xs text-content-secondary mb-1">
                   人设正文 *（背景、专业领域、提问策略与口头禅，越具体越传神）
                 </label>
                 <textarea
@@ -368,19 +368,19 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   rows={6}
                   maxLength={2000}
                   placeholder="如：你是一位带过百人团队的 CTO，面试时喜欢从真实线上事故切入追问技术方案；口头禅是“这个方案线上跑过吗？”……"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-200 leading-relaxed focus:outline-none focus:border-violet-500 resize-y"
+                  className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-xs text-content-primary leading-relaxed focus:outline-none focus:border-violet-500 resize-y"
                 />
-                <div className="text-[10px] text-gray-600 mt-1 text-right">{form.system_prompt.length} / 2000</div>
+                <div className="text-[10px] text-content-placeholder mt-1 text-right">{form.system_prompt.length} / 2000</div>
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1">考察重点（逗号分隔，最多 8 个）</label>
+                <label className="block text-xs text-content-secondary mb-1">考察重点（逗号分隔，最多 8 个）</label>
                 <input
                   type="text"
                   value={form.focus_topics}
                   onChange={(e) => updateForm({ focus_topics: e.target.value })}
                   placeholder="如：高并发架构, 分布式一致性, 线上事故复盘"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-200 focus:outline-none focus:border-violet-500"
+                  className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-xs text-content-primary focus:outline-none focus:border-violet-500"
                 />
               </div>
 
@@ -388,7 +388,7 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <button
                 type="button"
                 onClick={() => setAdvancedOpen((v) => !v)}
-                className="flex items-center space-x-1 text-[11px] text-gray-500 hover:text-gray-300 transition"
+                className="flex items-center space-x-1 text-[11px] text-content-muted hover:text-content-primary transition"
               >
                 {advancedOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 <span>高级选项：自定义追问策略（留空则使用系统默认）</span>
@@ -396,54 +396,54 @@ const PersonaLibraryView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               {advancedOpen && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">开场首题引导</label>
+                    <label className="block text-[11px] text-content-muted mb-1">开场首题引导</label>
                     <textarea
                       value={form.opening_hint}
                       onChange={(e) => updateForm({ opening_hint: e.target.value })}
                       rows={2}
                       maxLength={400}
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-[11px] text-gray-200 focus:outline-none focus:border-violet-500 resize-y"
+                      className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-[11px] text-content-primary focus:outline-none focus:border-violet-500 resize-y"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">深挖追问引导（答得好时）</label>
+                    <label className="block text-[11px] text-content-muted mb-1">深挖追问引导（答得好时）</label>
                     <textarea
                       value={form.deep_dive_hint}
                       onChange={(e) => updateForm({ deep_dive_hint: e.target.value })}
                       rows={2}
                       maxLength={400}
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-[11px] text-gray-200 focus:outline-none focus:border-violet-500 resize-y"
+                      className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-[11px] text-content-primary focus:outline-none focus:border-violet-500 resize-y"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">补漏引导（答得浅时）</label>
+                    <label className="block text-[11px] text-content-muted mb-1">补漏引导（答得浅时）</label>
                     <textarea
                       value={form.probe_hint}
                       onChange={(e) => updateForm({ probe_hint: e.target.value })}
                       rows={2}
                       maxLength={400}
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-[11px] text-gray-200 focus:outline-none focus:border-violet-500 resize-y"
+                      className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-[11px] text-content-primary focus:outline-none focus:border-violet-500 resize-y"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">换题引导（切换考点时）</label>
+                    <label className="block text-[11px] text-content-muted mb-1">换题引导（切换考点时）</label>
                     <textarea
                       value={form.switch_hint}
                       onChange={(e) => updateForm({ switch_hint: e.target.value })}
                       rows={2}
                       maxLength={400}
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-[11px] text-gray-200 focus:outline-none focus:border-violet-500 resize-y"
+                      className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-[11px] text-content-primary focus:outline-none focus:border-violet-500 resize-y"
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-end space-x-2 p-4 border-t border-gray-800">
+            <div className="flex items-center justify-end space-x-2 p-4 border-t border-line-subtle">
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="text-xs px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                className="text-xs px-4 py-2 rounded-xl bg-surface-hover hover:bg-surface-active text-content-secondary transition"
               >
                 取消
               </button>

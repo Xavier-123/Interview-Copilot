@@ -46,3 +46,18 @@ export async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit):
 
   return payload as T;
 }
+
+/**
+ * 把异常转成可直接展示给用户的文案。
+ * 后端在模型不可用等场景会返回可读的 detail，优先把它透出去，
+ * 避免页面用"请稍后重试"把真实原因盖掉。
+ */
+export function describeApiError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    return error.detail || error.message || fallback;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}

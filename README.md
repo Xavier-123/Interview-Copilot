@@ -16,7 +16,7 @@ Interview-Copilot 是一个面向本地开发和个人训练的多 Agent 模拟�
 - **记忆与进化**：支持记忆授权、记忆查看/删除、面试官版本管理，以及候选版本回放、审批、实验和回滚接口。
 - **联网搜索**：可选接入 Tavily；服务端使用 `TAVILY_API_KEY`，也可以在浏览器中配置仅用于当前浏览器的密钥。
 - **面试日程**：登记真实面试、关联 JD 和简历、记录备忘，支持浏览器提醒和可选 SMTP 邮件提醒。
-- **无 Key 体验**：未配置有效模型密钥时会回退到内置动态 Mock，便于先验证界面和流程。
+- **模型失败即报错**：简历解析、JD 解析、面试问答与报告生成都直接调用模型；任一环节不可用时会返回可读原因，绝不会用示例数据（如固定的「张三 / 高并发 / Kafka」画像）掩盖失败。
 
 ## 工作流
 
@@ -78,7 +78,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ~~~
 
-不复制 `.env` 也可以启动；默认配置会使用 Mock 模式。配置真实模型时，编辑 `backend/.env` 后重启后端。
+必须先把 `.env.example` 复制为 `.env` 并填写有效的 `LLM_API_KEY`：未配置时接口会直接返回明确的配置提示，页面会把它显示出来。修改 `.env` 后需要重启后端才会生效（密钥在进程启动时读取一次）。
 
 ### 2. 启动前端
 
@@ -111,7 +111,7 @@ docker compose up --build
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `LLM_API_KEY` | `mock-key` | 服务端默认模型密钥；为空或 `mock-key` 时使用动态 Mock |
+| `LLM_API_KEY` | 空 | 服务端模型密钥，**必填**；为空时模型调用直接返回明确错误 |
 | `LLM_BASE_URL` | 空 | OpenAI 兼容服务地址，例如 DeepSeek、Qwen、Moonshot 或 Ollama |
 | `LLM_MODEL` | `gpt-4o` | 服务端默认模型名 |
 | `LLM_TEMPERATURE` | `0.7` | 生成温度 |
@@ -119,7 +119,6 @@ docker compose up --build
 | `TAVILY_API_KEY` | 空 | 服务端默认联网搜索密钥，可被浏览器请求级配置覆盖 |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./interview_copilot.db` | 数据库连接串；默认数据文件位于 `backend/` |
 | `UPLOAD_DIR` | `./uploads` | 上传简历和转录文件目录 |
-| `ENABLE_MOCK_MODE` | `false` | 显式开启 Mock；即使为 `false`，无有效 `LLM_API_KEY` 时仍会自动回退 Mock |
 
 前端右上角的「模型配置」会把自定义 `base_url`、API Key、模型和 temperature 保存在当前浏览器的 `localStorage` 中，并在请求时优先于后端默认配置。请不要在共享电脑或公开环境保存个人密钥。
 
@@ -199,7 +198,7 @@ npm run lint
 - `backend/interview_copilot.db`、`backend/uploads/` 和根目录下的运行产物可能包含简历、转录和模型输出，提交代码前请确认没有把个人数据加入版本库。
 - 前端自定义模型密钥和 Tavily 密钥保存在浏览器 `localStorage`；后端 `.env` 也不应提交到公开仓库。
 - 自定义 `LLM_BASE_URL` 默认进行公网地址校验；确需连接内网模型时，使用 `LLM_BASE_URL_ALLOWLIST` 显式放行。
-- Mock 回退有利于本地演示，但可能掩盖模型配置错误；接入真实模型后建议检查 `/health`、日志和实际报告内容。
+- 模型调用失败不再静默降级：简历/岗位解析、逐轮观察、评估与辅导任一环节出错都会在页面显示具体原因。排查时先看 `/health` 的 `llm_configured`，再看后端日志里的 `LLM error` 记录。
 
 ## 当前未实现
 

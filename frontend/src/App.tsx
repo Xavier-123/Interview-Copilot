@@ -8,12 +8,13 @@ const InterviewRoom = lazy(() => import('./components/InterviewRoom').then((m) =
 const ReportView = lazy(() => import('./components/ReportView').then((m) => ({ default: m.ReportView })));
 const PersonaLibraryView = lazy(() => import('./components/PersonaLibraryView').then((m) => ({ default: m.PersonaLibraryView })));
 import { PrivacyModeProvider } from './context/PrivacyModeContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { loadLLMConfig } from './utils/llmConfig';
 import { loadSearchConfig } from './utils/searchConfig';
 import { resolveInterviewerLineup } from './utils/interviewers';
 import type { PersonaDisplayInfo } from './utils/interviewers';
 import { checkAndNotifyUpcomingSchedules } from './utils/browserNotification';
-import { apiFetch } from './utils/api';
+import { apiFetch, describeApiError } from './utils/api';
 import type {
   Message,
   EvaluationReport,
@@ -61,6 +62,9 @@ export function App() {
     company?: string;
     interviewRound?: string;
   } | undefined>(undefined);
+
+  // 记录本场面试启动配置，便于复盘页一键「再次挑战」
+  const [lastInterviewConfig, setLastInterviewConfig] = useState<any>(null);
 
 
   // Timer during interview (freeze when paused)
@@ -114,6 +118,7 @@ export function App() {
     customPersonas?: PersonaDisplayInfo[];
   }) => {
     setIsThinking(true);
+    setLastInterviewConfig(config);
     setWebSearchEnabled(config.webSearchEnabled);
     setInterviewLanguage(config.language || 'zh');
     const personaDisplay = config.customPersonas || [];
@@ -171,14 +176,14 @@ export function App() {
       setView('interview');
     } catch (error) {
       console.error('Failed to start interview:', error);
-      alert('启动面试失败，请检查网络或后端服务连接。');
+      alert(describeApiError(error, '启动面试失败，请检查网络或后端服务连接。'));
     } finally {
       setIsThinking(false);
     }
   };
 
   // 2. Submit Candidate Answer
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, code?: string, codeLanguage?: string) => {
     if (!sessionId || isThinking || status === 'paused' || status === 'finished') return;
 
     const tempUserMsg: Message = {
@@ -186,6 +191,7 @@ export function App() {
       name: 'candidate',
       content: text,
       timestamp: new Date().toISOString(),
+      ...(code ? { code, code_language: codeLanguage || 'python' } : {}),
     };
     setMessages((prev) => [...prev, tempUserMsg]);
     setIsThinking(true);
@@ -197,6 +203,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
+          ...(code ? { code, code_language: codeLanguage || 'python' } : {}),
           ...(searchConfig ? { search_config: searchConfig } : {}),
         }),
       });
@@ -214,7 +221,7 @@ export function App() {
       }
     } catch (error) {
       console.error('Failed to send answer:', error);
-      alert('提交回答失败，请稍后重试。');
+      alert(describeApiError(error, '提交回答失败，请稍后重试。'));
     } finally {
       setIsThinking(false);
     }
@@ -334,7 +341,7 @@ export function App() {
       return { answer: data.standard_answer, searchMetadata: data.search_metadata };
     } catch (err) {
       console.error('Failed to simulate answer:', err);
-      alert('构思标准回答失败，请检查服务状态');
+      alert(describeApiError(err, '构思标准回答失败，请检查服务状态'));
     }
   };
 
@@ -369,7 +376,7 @@ export function App() {
       setView('report');
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert('生成复盘报告失败，请重试。');
+      alert(describeApiError(error, '生成复盘报告失败，请重试。'));
     } finally {
       finishInFlightRef.current = false;
       setIsThinking(false);
@@ -427,22 +434,25 @@ export function App() {
   };
 
   return (
-    <PrivacyModeProvider>
-      <div className="min-h-screen bg-[#0b0f19] text-gray-100 flex flex-col font-sans">
-          <Navbar
-            currentStage={stage}
-            elapsedSeconds={elapsedSeconds}
-            status={status}
-            currentView={view}
-            onNavigate={(v) => {
-              if (v === 'setup') setSetupPrefill(undefined);
-              setView(v);
-            }}
-            inInterview={view === 'interview' || view === 'report'}
-            onNavigateHistory={() => setView('interviews')}
-            onNavigatePersonas={() => setView('personas')}
-            onNavigateHome={handleRestart}
-          />
+    <ThemeProvider>
+      <PrivacyModeProvider>
+        <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] flex flex-col font-sans transition-colors duration-200">
+          {view !== 'interview' && (
+            <Navbar
+              currentStage={stage}
+              elapsedSeconds={elapsedSeconds}
+              status={status}
+              currentView={view}
+              onNavigate={(v) => {
+                if (v === 'setup') setSetupPrefill(undefined);
+                setView(v);
+              }}
+              inInterview={view === 'report'}
+              onNavigateHistory={() => setView('interviews')}
+              onNavigatePersonas={() => setView('personas')}
+              onNavigateHome={handleRestart}
+            />
+          )}
 
           <main className="flex-1">
             <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-400">正在加载工作区...</div>}>
@@ -510,6 +520,8 @@ export function App() {
                 language={interviewLanguage}
                 onToggleWebSearch={handleToggleWebSearch}
                 onSimulateAnswer={handleSimulateAnswer}
+                elapsedSeconds={elapsedSeconds}
+                onEmergencyExit={handleRestart}
               />
             )}
 
@@ -521,6 +533,13 @@ export function App() {
               <ReportView
                 report={report}
                 onRestart={handleRestart}
+                onRechallenge={() => {
+                  if (lastInterviewConfig) {
+                    handleStartInterview(lastInterviewConfig);
+                  } else {
+                    setView('setup');
+                  }
+                }}
                 sessionId={sessionId}
                 onBack={() => setView('interviews')}
                 backLabel="返回面试管理"
@@ -528,8 +547,9 @@ export function App() {
             )}
             </Suspense>
           </main>
-      </div>
-    </PrivacyModeProvider>
+        </div>
+      </PrivacyModeProvider>
+    </ThemeProvider>
   );
 }
 

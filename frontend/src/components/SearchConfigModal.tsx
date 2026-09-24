@@ -61,29 +61,29 @@ export function SearchConfigModal({ open, onClose }: SearchConfigModalProps) {
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
+      <div className="w-full max-w-md rounded-2xl border border-line-default bg-surface shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-line-subtle px-5 py-4">
           <div className="flex items-center gap-2">
-            <Globe2 className="h-4 w-4 text-emerald-400" />
-            <span className="text-sm font-semibold text-gray-100">搜索引擎配置</span>
+            <Globe2 className="h-4 w-4 text-status-success" />
+            <span className="text-sm font-semibold text-content-primary">搜索引擎配置</span>
           </div>
-          <button type="button" onClick={onClose} title="关闭" className="text-gray-500 transition hover:text-gray-200">
+          <button type="button" onClick={onClose} title="关闭" className="text-content-muted transition hover:text-content-primary">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          <p className="text-[11px] leading-relaxed text-gray-400">
+          <p className="text-[11px] leading-relaxed text-content-secondary">
             API Key 仅保存在当前浏览器，每次搜索时临时发送，不会写入面试记录。留空时使用后端环境变量 TAVILY_API_KEY。
           </p>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-400">搜索引擎</label>
-            <select disabled value="tavily" className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-200">
+            <label className="mb-1.5 block text-xs font-medium text-content-secondary">搜索引擎</label>
+            <select disabled value="tavily" className="w-full rounded-xl border border-line-default bg-surface-subtle px-3 py-2 text-xs text-content-primary">
               <option value="tavily">Tavily Search</option>
             </select>
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-400">Tavily API Key</label>
+            <label className="mb-1.5 block text-xs font-medium text-content-secondary">Tavily API Key</label>
             <input
               type="password"
               value={apiKey}
@@ -93,15 +93,15 @@ export function SearchConfigModal({ open, onClose }: SearchConfigModalProps) {
               }}
               autoComplete="off"
               placeholder="tvly-...（可留空使用服务端配置）"
-              className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 font-mono text-xs text-gray-200 placeholder-gray-600 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded-xl border border-line-default bg-surface-subtle px-3 py-2 font-mono text-xs text-content-primary placeholder-content-placeholder focus:border-status-success focus:outline-none focus:ring-1 focus:ring-status-success"
             />
           </div>
 
           {testResult && (
             <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
               testResult.status === 'success'
-                ? 'border-emerald-800/60 bg-emerald-950/30 text-emerald-300'
-                : 'border-amber-800/60 bg-amber-950/30 text-amber-300'
+                ? 'border-status-success-border bg-status-success-bg text-status-success'
+                : 'border-status-warning-border bg-status-warning-bg text-status-warning'
             }`}>
               {testResult.status === 'success' ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <Search className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
               <span>{testResult.status === 'success' ? `连接成功，返回 ${testResult.results.length} 个结果` : testResult.error_message}</span>
@@ -109,13 +109,13 @@ export function SearchConfigModal({ open, onClose }: SearchConfigModalProps) {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-gray-800 px-5 py-4">
-          <button type="button" onClick={clear} className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-400 transition hover:border-red-900/60 hover:text-red-300">
+        <div className="flex items-center justify-between border-t border-line-subtle px-5 py-4">
+          <button type="button" onClick={clear} className="flex items-center gap-1.5 rounded-lg border border-line-default px-3 py-2 text-xs text-content-secondary transition hover:border-status-danger-border hover:text-status-danger">
             <Eraser className="h-3.5 w-3.5" />
             <span>清除本地 Key</span>
           </button>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={testConnection} disabled={testing} className="flex items-center gap-1.5 rounded-lg border border-emerald-800/60 px-3 py-2 text-xs text-emerald-300 transition hover:bg-emerald-950/40 disabled:opacity-50">
+            <button type="button" onClick={testConnection} disabled={testing} className="flex items-center gap-1.5 rounded-lg border border-status-success-border px-3 py-2 text-xs text-status-success transition hover:bg-status-success-bg disabled:opacity-50">
               {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
               <span>{testing ? '测试中' : '测试连接'}</span>
             </button>

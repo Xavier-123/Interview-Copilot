@@ -1,25 +1,225 @@
 @import "tailwindcss";
 
+/* dark: 变体跟随应用内主题开关（data-theme），而非系统 prefers-color-scheme */
+@custom-variant dark (&:where([data-theme="classic-dark"], [data-theme="classic-dark"] *));
+
+/* ========================================================
+   Interview-Copilot UI Design Tokens (Linear / Vercel Style)
+   ======================================================== */
+
+:root,
+[data-theme="classic-dark"] {
+  /* Canvas & Surface Tokens */
+  --bg-app: #0b0f19;
+  --bg-surface: #111827;
+  --bg-surface-elevated: #161f30;
+  --bg-surface-hover: #1f2937;
+  --bg-surface-active: #374151;
+  --bg-subtle: #1e293b;
+  --bg-header: rgba(11, 15, 25, 0.85);
+  --bg-nav-tab: rgba(17, 24, 39, 0.7);
+
+  /* Primary Brand Blue */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-500: #3b82f6;
+  --color-primary: #3b82f6;
+  --color-primary-hover: #60a5fa;
+  --color-primary-active: #2563eb;
+  --color-primary-subtle: rgba(59, 130, 246, 0.15);
+
+  /* Semantic Status Colors */
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.12);
+  --color-success-border: rgba(16, 185, 129, 0.3);
+
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-warning-border: rgba(245, 158, 11, 0.3);
+
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-danger-border: rgba(239, 68, 68, 0.3);
+
+  --color-info: #38bdf8;
+  --color-info-bg: rgba(56, 189, 248, 0.12);
+  --color-info-border: rgba(56, 189, 248, 0.3);
+
+  /* Text Hierarchy */
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-placeholder: #4b5563;
+  --text-disabled: #374151;
+  --text-inverse: #0b0f19;
+
+  /* Subtle Borders & Separators */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-focus: rgba(59, 130, 246, 0.5);
+
+  /* Elevation & Shadows */
+  --shadow-card: 0 4px 16px 0 rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 8px 24px 0 rgba(0, 0, 0, 0.45);
+  --shadow-popover: 0 12px 32px 0 rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 24px 48px -8px rgba(0, 0, 0, 0.7);
+
+  /* Header & Control Specific */
+  --btn-header-bg: rgba(17, 24, 39, 0.8);
+  --btn-header-border: #1f2937;
+  --btn-header-hover: #374151;
+  --btn-header-text: #d1d5db;
+}
+
+[data-theme="linear-light"] {
+  /* Canvas & Surface Tokens (No harsh glare, subtle cool off-white) */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-surface-hover: #f1f5f9;
+  --bg-surface-active: #e2e8f0;
+  --bg-subtle: #f1f5f9;
+  --bg-header: rgba(255, 255, 255, 0.85);
+  --bg-nav-tab: rgba(241, 245, 249, 0.95);
+
+  /* Primary Brand Blue (Restrained tech blue) */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-500: #3b82f6;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-active: #1e40af;
+  --color-primary-subtle: rgba(37, 99, 235, 0.08);
+
+  /* Semantic Status Colors */
+  --color-success: #059669;
+  --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
+
+  --color-warning: #d97706;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+
+  --color-info: #0284c7;
+  --color-info-bg: #f0f9ff;
+  --color-info-border: #bae6fd;
+
+  /* Text Hierarchy (Slate scale, avoiding pure black #000) */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-placeholder: #94a3b8;
+  --text-disabled: #cbd5e1;
+  --text-inverse: #ffffff;
+
+  /* Subtle Borders & Separators */
+  --border-subtle: rgba(15, 23, 42, 0.06);
+  --border-default: rgba(15, 23, 42, 0.10);
+  --border-focus: rgba(37, 99, 235, 0.40);
+
+  /* Elevation & Shadows: Multi-stop diffuse shadows */
+  --shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.02), 0 4px 16px 0 rgba(15, 23, 42, 0.04);
+  --shadow-card-hover: 0 2px 4px 0 rgba(0, 0, 0, 0.03), 0 8px 24px -2px rgba(15, 23, 42, 0.07);
+  --shadow-popover: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 12px 28px -4px rgba(15, 23, 42, 0.08);
+  --shadow-modal: 0 20px 40px -6px rgba(15, 23, 42, 0.12), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+
+  /* Header & Control Specific */
+  --btn-header-bg: #ffffff;
+  --btn-header-border: #e2e8f0;
+  --btn-header-hover: #f1f5f9;
+  --btn-header-text: #334155;
+}
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  /* Radius Tokens */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Typography Stack */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
+  line-height: 1.55;
   font-weight: 400;
-  color-scheme: light dark;
+  font-feature-settings: 'tnum' 1, 'cv02' 1, 'cv03' 1, 'cv04' 1, 'cv11' 1;
+}
+
+@theme {
+  --color-app: var(--bg-app);
+  --color-surface: var(--bg-surface);
+  --color-surface-elevated: var(--bg-surface-elevated);
+  --color-surface-hover: var(--bg-surface-hover);
+  --color-surface-active: var(--bg-surface-active);
+  --color-surface-subtle: var(--bg-subtle);
+  --color-surface-header: var(--bg-header);
+
+  --color-brand-primary: var(--color-primary);
+  --color-brand-hover: var(--color-primary-hover);
+  --color-brand-active: var(--color-primary-active);
+  --color-brand-subtle: var(--color-primary-subtle);
+
+  --color-status-success: var(--color-success);
+  --color-status-success-bg: var(--color-success-bg);
+  --color-status-success-border: var(--color-success-border);
+  --color-status-warning: var(--color-warning);
+  --color-status-warning-bg: var(--color-warning-bg);
+  --color-status-warning-border: var(--color-warning-border);
+  --color-status-danger: var(--color-danger);
+  --color-status-danger-bg: var(--color-danger-bg);
+  --color-status-danger-border: var(--color-danger-border);
+  --color-status-info: var(--color-info);
+  --color-status-info-bg: var(--color-info-bg);
+  --color-status-info-border: var(--color-info-border);
+
+  --color-content-primary: var(--text-primary);
+  --color-content-secondary: var(--text-secondary);
+  --color-content-muted: var(--text-muted);
+  --color-content-placeholder: var(--text-placeholder);
+  --color-content-disabled: var(--text-disabled);
+  --color-content-inverse: var(--text-inverse);
+
+  --color-line-subtle: var(--border-subtle);
+  --color-line-default: var(--border-default);
+  --color-line-focus: var(--border-focus);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+  --shadow-popover: var(--shadow-popover);
+  --shadow-modal: var(--shadow-modal);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #0b0f19;
-  color: #f3f4f6;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* 深色主题下的原生控件（下拉框、日期输入等）统一按深色渲染，弹层不再发白 */
-input[type="date"],
-input[type="time"],
-input[type="datetime-local"],
-select {
+/* 原生表单控件的 color-scheme 自适应 */
+[data-theme="linear-light"] input[type="date"],
+[data-theme="linear-light"] input[type="time"],
+[data-theme="linear-light"] input[type="datetime-local"],
+[data-theme="linear-light"] select {
+  color-scheme: light;
+}
+
+[data-theme="classic-dark"] input[type="date"],
+[data-theme="classic-dark"] input[type="time"],
+[data-theme="classic-dark"] input[type="datetime-local"],
+[data-theme="classic-dark"] select {
   color-scheme: dark;
 }
 
@@ -54,18 +254,72 @@ select {
   animation: drawer-slide-left 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Custom scrollbar */
+/* 自适应主题滚动条 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
+
+[data-theme="classic-dark"] ::-webkit-scrollbar-track {
   background: #111827;
 }
-::-webkit-scrollbar-thumb {
+[data-theme="classic-dark"] ::-webkit-scrollbar-thumb {
   background: #374151;
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
+[data-theme="classic-dark"] ::-webkit-scrollbar-thumb:hover {
   background: #4b5563;
 }
+
+[data-theme="linear-light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+[data-theme="linear-light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+[data-theme="linear-light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* AI 思考三点柔和起伏跳动动效 */
+@keyframes dot-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+.dot-bounce-1 {
+  animation: dot-bounce 1.3s infinite ease-in-out both;
+  animation-delay: 0s;
+}
+.dot-bounce-2 {
+  animation: dot-bounce 1.3s infinite ease-in-out both;
+  animation-delay: 0.2s;
+}
+.dot-bounce-3 {
+  animation: dot-bounce 1.3s infinite ease-in-out both;
+  animation-delay: 0.4s;
+}
+
+/* 动态音频声波纹理动效 */
+@keyframes wave-pulse {
+  0%, 100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.wave-bar-1 { animation: wave-pulse 0.9s ease-in-out infinite; transform-origin: bottom; }
+.wave-bar-2 { animation: wave-pulse 1.3s ease-in-out infinite 0.15s; transform-origin: bottom; }
+.wave-bar-3 { animation: wave-pulse 1.0s ease-in-out infinite 0.3s; transform-origin: bottom; }
+.wave-bar-4 { animation: wave-pulse 1.4s ease-in-out infinite 0.1s; transform-origin: bottom; }
+.wave-bar-5 { animation: wave-pulse 0.8s ease-in-out infinite 0.25s; transform-origin: bottom; }
+

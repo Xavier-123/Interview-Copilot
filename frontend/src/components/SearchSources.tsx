@@ -11,7 +11,7 @@ export function SearchSources({ metadata, compact = false }: SearchSourcesProps)
 
   if (metadata.status === 'failed') {
     return (
-      <div className="mt-2 flex items-start gap-1.5 border-t border-amber-800/30 pt-2 text-[10px] text-amber-300/90">
+      <div className="mt-2 flex items-start gap-1.5 border-t border-amber-300/60 pt-2 text-[10px] text-amber-600 dark:border-amber-800/30 dark:text-amber-300/90">
         <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
         <span>联网搜索未使用：{metadata.error_message || '搜索服务暂时不可用'}</span>
       </div>
@@ -19,8 +19,8 @@ export function SearchSources({ metadata, compact = false }: SearchSourcesProps)
   }
 
   return (
-    <details className={`mt-2 border-t border-emerald-800/30 pt-2 ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-emerald-300 hover:text-emerald-200">
+    <details className={`mt-2 border-t border-emerald-300/60 pt-2 ${compact ? 'text-[10px]' : 'text-[11px]'} dark:border-emerald-800/30`}>
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-300 dark:hover:text-emerald-200">
         <Globe2 className="h-3 w-3 shrink-0" />
         <span>
           Tavily 搜索成功 · {metadata.results.length} 个来源 · {metadata.latency_ms}ms
@@ -33,7 +33,7 @@ export function SearchSources({ metadata, compact = false }: SearchSourcesProps)
             href={source.url}
             target="_blank"
             rel="noreferrer"
-            className="flex min-w-0 items-start gap-1.5 text-blue-300 hover:text-blue-200 hover:underline"
+            className="flex min-w-0 items-start gap-1.5 text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-300 dark:hover:text-blue-200"
           >
             <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" />
             <span className="break-words">{source.title || source.url}</span>

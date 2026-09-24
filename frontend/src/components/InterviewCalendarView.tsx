@@ -261,46 +261,48 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
   }, [selectedDateKey, schedulesByDate]);
 
   // Status Badge Helper
+  // 状态语义统一走 status-* 设计 token，随 classic-dark / linear-light 自动切换，
+  // 并与时间轴视图 InterviewTimelineView 保持同一套映射。
   const getStatusBadge = (status: ScheduleStatus) => {
     switch (status) {
       case 'upcoming':
         return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-950/70 border border-amber-700/60 text-amber-300">
-            <Clock className="w-2.5 h-2.5 text-amber-400" />
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-warning-bg border border-status-warning-border text-status-warning">
+            <Clock className="w-2.5 h-2.5" />
             <span>待面试</span>
           </span>
         );
       case 'completed':
         return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-950/70 border border-blue-700/60 text-blue-300">
-            <CheckCircle2 className="w-2.5 h-2.5 text-blue-400" />
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-info-bg border border-status-info-border text-status-info">
+            <CheckCircle2 className="w-2.5 h-2.5" />
             <span>已面试</span>
           </span>
         );
       case 'passed':
         return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/70 border border-emerald-700/60 text-emerald-300">
-            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-success-bg border border-status-success-border text-status-success">
+            <CheckCircle2 className="w-2.5 h-2.5" />
             <span>已通过</span>
           </span>
         );
       case 'declined':
         return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-950/70 border border-violet-700/60 text-violet-300">
-            <Handshake className="w-2.5 h-2.5 text-violet-400" />
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-hover border border-line-default text-content-secondary">
+            <Handshake className="w-2.5 h-2.5 text-content-muted" />
             <span>已婉拒</span>
           </span>
         );
       case 'failed':
         return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-950/70 border border-red-700/60 text-red-300">
-            <XCircle className="w-2.5 h-2.5 text-red-400" />
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-danger-bg border border-status-danger-border text-status-danger">
+            <XCircle className="w-2.5 h-2.5" />
             <span>未通过</span>
           </span>
         );
       case 'cancelled':
         return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-800 text-gray-400 border border-gray-700">
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-hover border border-line-subtle text-content-muted">
             <span>已取消</span>
           </span>
         );
@@ -313,17 +315,17 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
   const getItemBadgeStyle = (status: ScheduleStatus) => {
     switch (status) {
       case 'upcoming':
-        return 'bg-amber-950/80 border-amber-600/60 text-amber-200 hover:bg-amber-900/80 hover:border-amber-400';
+        return 'bg-status-warning-bg border-status-warning-border text-status-warning hover:border-status-warning';
       case 'passed':
-        return 'bg-emerald-950/80 border-emerald-600/60 text-emerald-200 hover:bg-emerald-900/80 hover:border-emerald-400';
+        return 'bg-status-success-bg border-status-success-border text-status-success hover:border-status-success';
       case 'completed':
-        return 'bg-blue-950/80 border-blue-600/60 text-blue-200 hover:bg-blue-900/80 hover:border-blue-400';
+        return 'bg-status-info-bg border-status-info-border text-status-info hover:border-status-info';
       case 'declined':
-        return 'bg-violet-950/80 border-violet-600/60 text-violet-200 hover:bg-violet-900/80 hover:border-violet-400';
+        return 'bg-surface-hover border-line-default text-content-secondary hover:border-line-focus';
       case 'failed':
-        return 'bg-red-950/80 border-red-600/60 text-red-200 hover:bg-red-900/80 hover:border-red-400';
+        return 'bg-status-danger-bg border-status-danger-border text-status-danger hover:border-status-danger';
       default:
-        return 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700';
+        return 'bg-surface-hover border-line-subtle text-content-secondary hover:border-line-default';
     }
   };
 
@@ -336,32 +338,32 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
   return (
     <div className="space-y-4">
       {/* Top Controls: Month Selector & Quick Summary */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-900/80 border border-gray-800 p-3.5 rounded-2xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface border border-line-subtle p-3.5 rounded-2xl">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1">
             <button
               onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition cursor-pointer"
+              className="p-1.5 rounded-lg bg-surface-hover hover:bg-surface-active text-content-secondary hover:text-content-primary transition cursor-pointer"
               title="上一月"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={handleNextMonth}
-              className="p-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition cursor-pointer"
+              className="p-1.5 rounded-lg bg-surface-hover hover:bg-surface-active text-content-secondary hover:text-content-primary transition cursor-pointer"
               title="下一月"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          <h2 className="text-base sm:text-lg font-bold text-white tracking-wide flex items-center space-x-2">
+          <h2 className="text-base sm:text-lg font-bold text-content-primary tracking-wide flex items-center space-x-2">
             <span>{currentYear} 年 {currentMonth + 1} 月</span>
           </h2>
 
           <button
             onClick={handleToday}
-            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 transition cursor-pointer"
+            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-brand-subtle text-brand-primary border border-line-focus hover:border-brand-primary transition cursor-pointer"
           >
             返回今天
           </button>
@@ -369,31 +371,31 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
 
         {/* Legend & Month Metrics */}
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <div className="flex items-center space-x-2 text-gray-400">
+          <div className="flex items-center space-x-2 text-content-secondary">
             <span>本月排期:</span>
-            <span className="font-semibold text-white">{monthStats.totalInMonth} 场</span>
+            <span className="font-semibold text-content-primary">{monthStats.totalInMonth} 场</span>
             {monthStats.upcomingInMonth > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+              <span className="px-2 py-0.5 rounded-full text-[11px] bg-status-warning-bg text-status-warning border border-status-warning-border font-medium">
                 {monthStats.upcomingInMonth} 场待面试
               </span>
             )}
           </div>
 
-          <div className="hidden md:flex items-center space-x-2.5 border-l border-gray-800 pl-3 text-[11px] text-gray-400">
+          <div className="hidden md:flex items-center space-x-2.5 border-l border-line-subtle pl-3 text-[11px] text-content-secondary">
             <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="w-2 h-2 rounded-full bg-status-warning" />
               <span>待面试</span>
             </span>
             <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="w-2 h-2 rounded-full bg-status-success" />
               <span>已通过</span>
             </span>
             <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span className="w-2 h-2 rounded-full bg-status-info" />
               <span>已面试</span>
             </span>
             <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-red-400" />
+              <span className="w-2 h-2 rounded-full bg-status-danger" />
               <span>未通过</span>
             </span>
           </div>
@@ -401,13 +403,13 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
       </div>
 
       {/* Calendar Grid */}
-      <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
+      <div className="bg-surface border border-line-subtle rounded-2xl overflow-hidden shadow-card">
         {/* Weekdays Row */}
-        <div className="grid grid-cols-7 border-b border-gray-800 bg-gray-900/90 text-center text-xs font-semibold text-gray-400 py-2.5">
+        <div className="grid grid-cols-7 border-b border-line-subtle bg-surface text-center text-xs font-semibold text-content-secondary py-2.5">
           {WEEK_DAYS.map((wd, index) => (
             <div
               key={wd}
-              className={index >= 5 ? 'text-emerald-400/70' : ''}
+              className={index >= 5 ? 'text-content-muted' : ''}
             >
               {wd}
             </div>
@@ -415,7 +417,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
         </div>
 
         {/* Cells Grid */}
-        <div className="grid grid-cols-7 divide-x divide-y divide-gray-800/80 bg-gray-950/40">
+        <div className="grid grid-cols-7 divide-x divide-y divide-line-subtle bg-app">
           {calendarCells.map((cell) => {
             const hasSchedules = cell.schedules.length > 0;
             const isSelected = selectedDateKey === cell.dateKey;
@@ -429,11 +431,11 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                 onClick={() => setSelectedDateKey(cell.dateKey)}
                 className={`min-h-[115px] sm:min-h-[135px] p-1.5 sm:p-2 transition-all flex flex-col justify-between group cursor-pointer relative ${
                   !cell.isCurrentMonth
-                    ? 'bg-gray-950/60 opacity-45 hover:opacity-75'
+                    ? 'opacity-45 hover:opacity-75 hover:bg-surface'
                     : isSelected
-                    ? 'bg-emerald-950/20 ring-1 ring-emerald-500/70'
-                    : 'hover:bg-gray-900/70'
-                } ${cell.isToday ? 'border-t-2 border-t-emerald-500' : ''}`}
+                    ? 'bg-brand-subtle ring-1 ring-line-focus'
+                    : 'hover:bg-surface'
+                } ${cell.isToday ? 'border-t-2 border-t-brand-primary' : ''}`}
               >
                 {/* Cell Header: Day Number + Today Badge + Quick Add */}
                 <div className="flex items-center justify-between mb-1">
@@ -441,16 +443,16 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                     <span
                       className={`text-xs sm:text-sm font-semibold inline-flex items-center justify-center ${
                         cell.isToday
-                          ? 'w-6 h-6 rounded-full bg-emerald-500 text-white font-bold shadow-md shadow-emerald-900/50'
+                          ? 'w-6 h-6 rounded-full bg-brand-primary text-white font-bold shadow-sm'
                           : cell.isCurrentMonth
-                          ? 'text-gray-200'
-                          : 'text-gray-500'
+                          ? 'text-content-primary'
+                          : 'text-content-muted'
                       }`}
                     >
                       {cell.dayNumber}
                     </span>
                     {cell.isToday && (
-                      <span className="text-[10px] text-emerald-400 font-medium hidden sm:inline">
+                      <span className="text-[10px] text-brand-primary font-medium hidden sm:inline">
                         今天
                       </span>
                     )}
@@ -463,7 +465,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                       e.stopPropagation();
                       onCreateScheduleForDate(cell.dateKey);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-gray-800 hover:bg-emerald-600 text-gray-400 hover:text-white transition cursor-pointer"
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-surface-hover hover:bg-brand-primary text-content-secondary hover:text-white transition cursor-pointer"
                     title={`在 ${cell.dateKey} 登记面试`}
                   >
                     <Plus className="w-3 h-3" />
@@ -500,7 +502,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                   })}
 
                   {extraCount > 0 && (
-                    <div className="text-[10px] text-gray-400 font-medium px-1 py-0.5 hover:text-emerald-300">
+                    <div className="text-[10px] text-content-secondary font-medium px-1 py-0.5 hover:text-brand-primary">
                       +{extraCount} 场更多...
                     </div>
                   )}
@@ -514,14 +516,14 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                         key={idx}
                         className={`w-1.5 h-1.5 rounded-full ${
                           s.status === 'upcoming'
-                            ? 'bg-amber-400'
+                            ? 'bg-status-warning'
                             : s.status === 'passed'
-                            ? 'bg-emerald-400'
+                            ? 'bg-status-success'
                             : s.status === 'completed'
-                            ? 'bg-blue-400'
+                            ? 'bg-status-info'
                             : s.status === 'failed'
-                            ? 'bg-red-400'
-                            : 'bg-gray-400'
+                            ? 'bg-status-danger'
+                            : 'bg-content-muted'
                         }`}
                       />
                     ))}
@@ -543,11 +545,11 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
           />
 
           {/* Drawer content */}
-          <div className="relative w-full max-w-lg bg-gray-900 border-l border-gray-800 shadow-2xl flex flex-col z-10 drawer-slide-left">
+          <div className="relative w-full max-w-lg bg-surface border-l border-line-subtle shadow-modal flex flex-col z-10 drawer-slide-left">
             {/* Drawer Header */}
-            <div className="p-5 border-b border-gray-800 flex items-start justify-between bg-gray-900/90 sticky top-0 z-10">
+            <div className="p-5 border-b border-line-subtle flex items-start justify-between bg-surface sticky top-0 z-10">
               <div className="space-y-1">
-                <div className="flex items-center space-x-2 text-xs text-emerald-400 font-semibold">
+                <div className="flex items-center space-x-2 text-xs text-brand-primary font-semibold">
                   <CalendarIcon className="w-3.5 h-3.5" />
                   <span>
                     {(() => {
@@ -557,14 +559,14 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                     })()}
                   </span>
                   {selectedDateKey === todayKey && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-brand-subtle text-brand-primary border border-line-focus">
                       今天
                     </span>
                   )}
                 </div>
-                <h3 className="text-lg font-bold text-white">
+                <h3 className="text-lg font-bold text-content-primary">
                   当日面试日程
-                  <span className="ml-2 text-xs font-normal text-gray-400">
+                  <span className="ml-2 text-xs font-normal text-content-secondary">
                     (共 {selectedDaySchedules?.length || 0} 场)
                   </span>
                 </h3>
@@ -574,7 +576,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onCreateScheduleForDate(selectedDateKey)}
-                  className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer"
+                  className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-primary hover:bg-brand-hover text-white transition cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>登记此日日程</span>
@@ -582,7 +584,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedDateKey(null)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition cursor-pointer"
+                  className="p-1.5 rounded-lg text-content-secondary hover:text-content-primary hover:bg-surface-hover transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -593,26 +595,26 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {(!selectedDaySchedules || selectedDaySchedules.length === 0) ? (
                 <div className="py-16 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-400 mx-auto">
-                    <Clock className="w-6 h-6 text-gray-500" />
+                  <div className="w-12 h-12 rounded-xl bg-surface-hover border border-line-default flex items-center justify-center text-content-secondary mx-auto">
+                    <Clock className="w-6 h-6 text-content-muted" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-300">当天暂无面试安排</p>
-                    <p className="text-xs text-gray-500 max-w-xs mx-auto">
+                    <p className="text-sm font-medium text-content-secondary">当天暂无面试安排</p>
+                    <p className="text-xs text-content-muted max-w-xs mx-auto">
                       点击右上角“登记此日日程”，即可为 {selectedDateKey} 快捷预约面试时间。
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => onCreateScheduleForDate(selectedDateKey)}
-                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-emerald-400 text-xs font-medium border border-gray-700 transition cursor-pointer"
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-surface-hover hover:bg-surface-active text-brand-primary text-xs font-medium border border-line-default transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>立即为这一天添加日程</span>
                   </button>
                 </div>
               ) : (
-                <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-800">
+                <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-line-subtle">
                   {selectedDaySchedules.map((schedule) => {
                     const parsed = parseScheduleDate(schedule.scheduled_at);
                     const isUpcoming = schedule.status === 'upcoming';
@@ -623,31 +625,31 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                       <div key={schedule.id} className="relative group">
                         {/* Timeline Node Dot */}
                         <div
-                          className={`absolute -left-[27px] top-1.5 w-3.5 h-3.5 rounded-full border-2 bg-gray-950 ${
+                          className={`absolute -left-[27px] top-1.5 w-3.5 h-3.5 rounded-full border-2 bg-app ${
                             isUpcoming
-                              ? 'border-amber-400 ring-2 ring-amber-400/20'
+                              ? 'border-status-warning ring-2 ring-status-warning-border'
                               : schedule.status === 'passed'
-                              ? 'border-emerald-400 ring-2 ring-emerald-400/20'
-                              : 'border-gray-500'
+                              ? 'border-status-success ring-2 ring-status-success-border'
+                              : 'border-line-default'
                           }`}
                         />
 
                         {/* Schedule Card Container */}
                         <div
-                          className={`rounded-xl border p-4 transition-all bg-gray-950/70 space-y-3.5 ${
+                          className={`rounded-xl border p-4 transition-all bg-app space-y-3.5 ${
                             isUpcoming
-                              ? 'border-amber-700/50 hover:border-amber-500/70 shadow-lg shadow-amber-950/10'
-                              : 'border-gray-800 hover:border-gray-700'
+                              ? 'border-status-warning-border hover:border-status-warning shadow-card'
+                              : 'border-line-subtle hover:border-line-default'
                           }`}
                         >
                           {/* Time & Status Row */}
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center space-x-2">
-                              <span className="text-sm font-bold text-amber-300 flex items-center space-x-1">
-                                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                              <span className="text-sm font-bold text-content-primary flex items-center space-x-1">
+                                <Clock className="w-3.5 h-3.5 text-content-muted" />
                                 <span>{parsed ? parsed.timeStr : ''}</span>
                               </span>
-                              <span className="text-xs text-gray-400">
+                              <span className="text-xs text-content-secondary">
                                 {schedule.interview_round}
                               </span>
                             </div>
@@ -657,28 +659,28 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                           {/* Company & Role */}
                           <div className="space-y-1">
                             <div className="flex items-center space-x-2">
-                              <Building2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                              <h4 className="text-base font-bold text-white truncate">
+                              <Building2 className="w-4 h-4 text-content-muted shrink-0" />
+                              <h4 className="text-base font-bold text-content-primary truncate">
                                 {schedule.company}
                               </h4>
                             </div>
-                            <p className="text-xs text-emerald-400/90 font-medium pl-6">
+                            <p className="text-xs text-content-secondary font-medium pl-6">
                               {schedule.job_role}
                             </p>
                           </div>
 
                           {/* Location / Meeting Link */}
                           {schedule.meeting_link_or_address && (
-                            <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-between text-xs text-gray-300">
+                            <div className="p-2.5 rounded-lg bg-surface-hover border border-line-subtle flex items-center justify-between text-xs text-content-secondary">
                               <div className="flex items-center space-x-2 min-w-0 pr-2">
                                 {schedule.location_type === 'online' ? (
-                                  <Video className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                  <Video className="w-3.5 h-3.5 text-brand-primary shrink-0" />
                                 ) : schedule.location_type === 'phone' ? (
-                                  <Phone className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                  <Phone className="w-3.5 h-3.5 text-status-info shrink-0" />
                                 ) : (
-                                  <MapPin className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                                  <MapPin className="w-3.5 h-3.5 text-content-muted shrink-0" />
                                 )}
-                                <span className="truncate text-gray-300">
+                                <span className="truncate text-content-secondary">
                                   {schedule.meeting_link_or_address}
                                 </span>
                               </div>
@@ -687,11 +689,11 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => copyToClipboard(schedule.meeting_link_or_address!)}
-                                  className="p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-white transition cursor-pointer"
+                                  className="p-1 rounded hover:bg-surface-active text-content-secondary hover:text-content-primary transition cursor-pointer"
                                   title="复制链接/地址"
                                 >
                                   {copiedLink ? (
-                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <Check className="w-3.5 h-3.5 text-status-success" />
                                   ) : (
                                     <Copy className="w-3.5 h-3.5" />
                                   )}
@@ -703,7 +705,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                                       href={schedule.meeting_link_or_address}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="p-1 rounded hover:bg-gray-800 text-blue-400 hover:text-blue-300 transition"
+                                      className="p-1 rounded hover:bg-surface-active text-brand-primary hover:text-brand-hover transition"
                                       title="进入在线会议"
                                     >
                                       <ExternalLink className="w-3.5 h-3.5" />
@@ -715,8 +717,8 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
 
                           {/* Salary Note if any */}
                           {schedule.salary && (
-                            <div className="flex items-center space-x-1.5 text-xs text-amber-300/90">
-                              <Banknote className="w-3.5 h-3.5 text-amber-400" />
+                            <div className="flex items-center space-x-1.5 text-xs text-status-warning">
+                              <Banknote className="w-3.5 h-3.5" />
                               <span>目标/Offer薪资：{schedule.salary}</span>
                             </div>
                           )}
@@ -729,9 +731,9 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                                 onClick={() =>
                                   setExpandedJdId(isJdExpanded ? null : schedule.id)
                                 }
-                                className="inline-flex items-center space-x-1 text-gray-400 hover:text-white transition cursor-pointer py-1"
+                                className="inline-flex items-center space-x-1 text-content-secondary hover:text-content-primary transition cursor-pointer py-1"
                               >
-                                <FileText className="w-3 h-3 text-gray-400" />
+                                <FileText className="w-3 h-3 text-content-muted" />
                                 <span>{isJdExpanded ? '收起岗位 JD' : '查看岗位 JD 要求'}</span>
                                 {isJdExpanded ? (
                                   <ChevronUp className="w-3 h-3" />
@@ -740,7 +742,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                                 )}
                               </button>
                               {isJdExpanded && (
-                                <div className="mt-1.5 p-3 rounded-lg bg-gray-900/90 border border-gray-800 text-gray-300 whitespace-pre-wrap text-xs max-h-48 overflow-y-auto font-mono leading-relaxed">
+                                <div className="mt-1.5 p-3 rounded-lg bg-surface-hover border border-line-subtle text-content-secondary whitespace-pre-wrap text-xs max-h-48 overflow-y-auto font-mono leading-relaxed">
                                   {schedule.jd_text}
                                 </div>
                               )}
@@ -749,8 +751,8 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
 
                           {/* Notes if any */}
                           {schedule.notes && (
-                            <div className="text-xs text-gray-400 bg-gray-900/60 p-2.5 rounded-lg border border-gray-800/60">
-                              <span className="text-gray-500 font-medium mr-1">备注:</span>
+                            <div className="text-xs text-content-secondary bg-surface-hover p-2.5 rounded-lg border border-line-subtle">
+                              <span className="text-content-muted font-medium mr-1">备注:</span>
                               {schedule.notes}
                             </div>
                           )}
@@ -762,21 +764,21 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                               setSelectedDateKey(null);
                               onStartMockWithSchedule(schedule);
                             }}
-                            className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium text-xs shadow-md shadow-emerald-950/40 flex items-center justify-center space-x-2 transition cursor-pointer"
+                            className="w-full py-2 px-3 rounded-xl bg-brand-primary hover:bg-brand-hover text-white font-medium text-xs shadow-sm flex items-center justify-center space-x-2 transition cursor-pointer"
                           >
-                            <Sparkles className="w-3.5 h-3.5 text-emerald-200 animate-pulse" />
+                            <Sparkles className="w-3.5 h-3.5 text-white/80 animate-pulse" />
                             <span>针对此岗位发起 AI 模拟对练</span>
                           </button>
 
                           {/* Card Footer: Quick Status Switch + Edit + Delete */}
-                          <div className="pt-2 border-t border-gray-800/80 flex items-center justify-between text-xs">
+                          <div className="pt-2 border-t border-line-subtle flex items-center justify-between text-xs">
                             {/* Quick Status Buttons */}
                             <div className="flex items-center space-x-1">
                               {schedule.status !== 'passed' && (
                                 <button
                                   type="button"
                                   onClick={(e) => onQuickStatusChange(schedule.id, 'passed', e)}
-                                  className="px-2 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/60 text-emerald-300 text-[10px] transition cursor-pointer"
+                                  className="px-2 py-1 rounded bg-status-success-bg hover:border-status-success border border-status-success-border text-status-success text-[10px] transition cursor-pointer"
                                 >
                                   标记通过
                                 </button>
@@ -785,7 +787,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={(e) => onQuickStatusChange(schedule.id, 'failed', e)}
-                                  className="px-2 py-1 rounded bg-red-950/60 hover:bg-red-900/80 border border-red-800/60 text-red-300 text-[10px] transition cursor-pointer"
+                                  className="px-2 py-1 rounded bg-status-danger-bg hover:border-status-danger border border-status-danger-border text-status-danger text-[10px] transition cursor-pointer"
                                 >
                                   未通过
                                 </button>
@@ -797,7 +799,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                               <button
                                 type="button"
                                 onClick={(e) => onEditSchedule(schedule, e)}
-                                className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-800 transition cursor-pointer"
+                                className="p-1 rounded text-content-secondary hover:text-content-primary hover:bg-surface-hover transition cursor-pointer"
                                 title="编辑日程"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
@@ -805,7 +807,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                               <button
                                 type="button"
                                 onClick={(e) => onDeleteSchedule(schedule.id, schedule.company, e)}
-                                className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-red-950/50 transition cursor-pointer"
+                                className="p-1 rounded text-content-secondary hover:text-status-danger hover:bg-status-danger-bg transition cursor-pointer"
                                 title="删除日程"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

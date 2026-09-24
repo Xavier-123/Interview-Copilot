@@ -174,25 +174,25 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-surface border border-line-default rounded-3xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 shrink-0 bg-gray-950/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line-subtle shrink-0 bg-surface-subtle">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600/30 to-fuchsia-600/30 border border-violet-500/40 flex items-center justify-center text-xl shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-100 to-fuchsia-100 border border-violet-200 dark:from-violet-600/30 dark:to-fuchsia-600/30 dark:border-violet-500/40 flex items-center justify-center text-xl shrink-0">
               {persona.avatar || '🎭'}
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-base font-bold text-white flex items-center gap-1.5">
+                <h2 className="text-base font-bold text-content-primary flex items-center gap-1.5">
                   <span>一键迭代优化面试官</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-violet-950/80 border border-violet-700/60 text-violet-300 font-normal">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 dark:bg-violet-950/80 dark:border-violet-700/60 dark:text-violet-300 font-normal">
                     AI Auto-Evolution
                   </span>
                 </h2>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5">
-                对战目标：<span className="text-gray-200 font-medium">{persona.name}</span>
-                <span className="mx-2 text-gray-600">|</span>
+              <p className="text-xs text-content-secondary mt-0.5">
+                对战目标：<span className="text-content-primary font-medium">{persona.name}</span>
+                <span className="mx-2 text-content-placeholder">|</span>
                 通过推演仿真发现机械破绽与套话，定向升级人设、避坑铁律与黄金范式
               </p>
             </div>
@@ -200,17 +200,17 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
           <button
             onClick={onClose}
             type="button"
-            className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition"
+            className="p-2 text-content-secondary hover:text-content-primary rounded-xl hover:bg-surface-hover transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Configuration Bar */}
-        <div className="px-6 py-3 bg-gray-900/80 border-b border-gray-800/80 shrink-0 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-6 py-3 bg-surface border-b border-line-subtle shrink-0 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 font-medium">对抗候选人风格:</span>
-            <div className="flex rounded-xl bg-gray-950/60 p-1 border border-gray-800">
+            <span className="text-xs text-content-secondary font-medium">对抗候选人风格:</span>
+            <div className="flex rounded-xl bg-surface-subtle p-1 border border-line-subtle">
               {CANDIDATE_BEHAVIORS.map((cb) => (
                 <button
                   key={cb.key}
@@ -219,7 +219,7 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                   className={`text-xs px-3 py-1 rounded-lg transition ${
                     candidateBehavior === cb.key
                       ? 'bg-violet-600 text-white font-medium shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      : 'text-content-secondary hover:text-content-primary'
                   }`}
                   title={cb.desc}
                 >
@@ -247,14 +247,14 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
             /* Loading Pipeline View */
             <div className="h-full flex flex-col items-center justify-center space-y-8 animate-fadeIn">
               <div className="relative">
-                <div className="w-20 h-20 rounded-3xl bg-violet-600/10 border border-violet-500/30 flex items-center justify-center animate-pulse">
-                  <Flame className="w-10 h-10 text-violet-400 animate-bounce" />
+                <div className="w-20 h-20 rounded-3xl bg-violet-50 border border-violet-200 dark:bg-violet-600/10 dark:border-violet-500/30 flex items-center justify-center animate-pulse">
+                  <Flame className="w-10 h-10 text-violet-500 dark:text-violet-400 animate-bounce" />
                 </div>
               </div>
 
               <div className="text-center space-y-1">
-                <h3 className="text-sm font-semibold text-white">面试官认知推演与自演进闭环进行中</h3>
-                <p className="text-xs text-gray-400">系统正通过真实对抗推演发现破绽并提炼高维追问经验...</p>
+                <h3 className="text-sm font-semibold text-content-primary">面试官认知推演与自演进闭环进行中</h3>
+                <p className="text-xs text-content-secondary">系统正通过真实对抗推演发现破绽并提炼高维追问经验...</p>
               </div>
 
               {/* Step indicator */}
@@ -269,15 +269,15 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                     key={s.step}
                     className={`p-3 rounded-2xl border transition-all ${
                       loadingStep === s.step
-                        ? 'bg-violet-950/40 border-violet-500 text-violet-300 ring-1 ring-violet-500/50'
+                        ? 'bg-violet-50 border-violet-400 text-violet-700 ring-1 ring-violet-500/50 dark:bg-violet-950/40 dark:border-violet-500 dark:text-violet-300'
                         : loadingStep > s.step
-                        ? 'bg-gray-950/40 border-emerald-800/60 text-emerald-400'
-                        : 'bg-gray-950/20 border-gray-800 text-gray-600'
+                        ? 'bg-status-success-bg border-status-success-border text-status-success'
+                        : 'bg-surface-subtle border-line-subtle text-content-placeholder'
                     }`}
                   >
                     <div className="flex items-center space-x-1.5 text-xs font-semibold">
                       {loadingStep > s.step ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-status-success shrink-0" />
                       ) : (
                         <span className="w-3.5 h-3.5 rounded-full border border-current text-[10px] flex items-center justify-center shrink-0">
                           {s.step}
@@ -285,7 +285,7 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                       )}
                       <span>{s.title}</span>
                     </div>
-                    <p className="text-[10px] mt-1 text-gray-400 truncate">{s.desc}</p>
+                    <p className="text-[10px] mt-1 text-content-secondary truncate">{s.desc}</p>
                   </div>
                 ))}
               </div>
@@ -293,16 +293,16 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
           ) : error ? (
             /* Error View */
             <div className="h-full flex flex-col items-center justify-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-red-950/50 border border-red-800/60 flex items-center justify-center text-red-400">
+              <div className="w-12 h-12 rounded-2xl bg-status-danger-bg border border-status-danger-border flex items-center justify-center text-status-danger">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div className="text-center space-y-1">
-                <p className="text-sm font-semibold text-red-300">仿真演进执行遇到问题</p>
-                <p className="text-xs text-gray-400 max-w-md">{error}</p>
+                <p className="text-sm font-semibold text-status-danger">仿真演进执行遇到问题</p>
+                <p className="text-xs text-content-secondary max-w-md">{error}</p>
               </div>
               <button
                 onClick={handleStartEvolution}
-                className="text-xs px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 transition"
+                className="text-xs px-4 py-2 rounded-xl bg-surface-hover hover:bg-surface-active text-content-primary transition"
               >
                 重试
               </button>
@@ -310,29 +310,29 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
           ) : !result ? (
             /* Pre-start Overview View */
             <div className="h-full flex flex-col items-center justify-center text-center space-y-6 max-w-xl mx-auto">
-              <div className="w-16 h-16 rounded-3xl bg-violet-950/50 border border-violet-800/40 flex items-center justify-center text-violet-400">
+              <div className="w-16 h-16 rounded-3xl bg-violet-50 border border-violet-200 dark:bg-violet-950/50 dark:border-violet-800/40 flex items-center justify-center text-violet-500 dark:text-violet-400">
                 <Sparkles className="w-8 h-8" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-base font-bold text-white">一键自演进：让面试官越练越聪明</h3>
-                <p className="text-xs text-gray-400 leading-relaxed">
+                <h3 className="text-base font-bold text-content-primary">一键自演进：让面试官越练越聪明</h3>
+                <p className="text-xs text-content-secondary leading-relaxed">
                   系统将为你所选的面试官实时匹配一位具有鲜明行为特征的合成候选人（如含糊套话、死记八股等），
                   自动推进仿真对战，再由后台独立 Critic 评估专家对面试官的开场白、追问穿透力与审查破绽进行多维诊断，
                   最终产出针对性优化的人设 Prompt、避坑铁律与黄金追问范例。
                 </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-gray-950/60 border border-gray-800 w-full text-left space-y-2 text-xs">
-                <div className="text-gray-300 font-semibold flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-violet-400" />
+              <div className="p-4 rounded-2xl bg-surface-subtle border border-line-subtle w-full text-left space-y-2 text-xs">
+                <div className="text-content-primary font-semibold flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
                   <span>本次推演参数预设</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-gray-400">
+                <div className="grid grid-cols-2 gap-2 text-content-secondary">
                   <div>
-                    考察主题: <span className="text-gray-200">{selectedTopic}</span>
+                    考察主题: <span className="text-content-primary">{selectedTopic}</span>
                   </div>
                   <div>
-                    候选人风格: <span className="text-gray-200">{CANDIDATE_BEHAVIORS.find(c => c.key === candidateBehavior)?.label}</span>
+                    候选人风格: <span className="text-content-primary">{CANDIDATE_BEHAVIORS.find(c => c.key === candidateBehavior)?.label}</span>
                   </div>
                 </div>
               </div>
@@ -349,14 +349,14 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
             /* Results Presentation */
             <div className="h-full flex flex-col overflow-hidden space-y-4">
               {/* Tab Navigation */}
-              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2 shrink-0">
+              <div className="flex items-center justify-between border-b border-line-subtle pb-2 shrink-0">
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setActiveTab('solution')}
                     className={`flex items-center space-x-1.5 text-xs px-3.5 py-1.5 rounded-xl font-medium transition ${
                       activeTab === 'solution'
                         ? 'bg-violet-600 text-white shadow'
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                        : 'text-content-secondary hover:text-content-primary hover:bg-surface-hover'
                     }`}
                   >
                     <Sparkles className="w-3.5 h-3.5" />
@@ -367,7 +367,7 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                     className={`flex items-center space-x-1.5 text-xs px-3.5 py-1.5 rounded-xl font-medium transition ${
                       activeTab === 'transcript'
                         ? 'bg-violet-600 text-white shadow'
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                        : 'text-content-secondary hover:text-content-primary hover:bg-surface-hover'
                     }`}
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
@@ -378,7 +378,7 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                     className={`flex items-center space-x-1.5 text-xs px-3.5 py-1.5 rounded-xl font-medium transition ${
                       activeTab === 'critic'
                         ? 'bg-violet-600 text-white shadow'
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                        : 'text-content-secondary hover:text-content-primary hover:bg-surface-hover'
                     }`}
                   >
                     <ShieldAlert className="w-3.5 h-3.5" />
@@ -386,9 +386,9 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                   </button>
                 </div>
 
-                <div className="text-xs text-gray-400 flex items-center space-x-2">
-                  <span className="text-gray-500">考察点:</span>
-                  <span className="text-gray-300 font-mono">{result.topic}</span>
+                <div className="text-xs text-content-secondary flex items-center space-x-2">
+                  <span className="text-content-muted">考察点:</span>
+                  <span className="text-content-secondary font-mono">{result.topic}</span>
                 </div>
               </div>
 
@@ -396,23 +396,23 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
               {activeTab === 'solution' && (
                 <div className="flex-1 overflow-y-auto pr-1 space-y-4">
                   {/* Summary Banner */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-r from-violet-950/40 via-indigo-950/30 to-gray-950/40 border border-violet-800/40 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-violet-50 via-indigo-50 to-surface-subtle border border-violet-200 dark:from-violet-950/40 dark:via-indigo-950/30 dark:to-gray-950/40 dark:border-violet-800/40 flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-violet-400 tracking-wider">
+                      <span className="text-[10px] uppercase font-bold text-violet-600 dark:text-violet-400 tracking-wider">
                         核心升级说明
                       </span>
-                      <p className="text-xs text-gray-200 leading-relaxed">
+                      <p className="text-xs text-content-primary leading-relaxed">
                         {result.optimized_spec.optimization_rationale || '优化了提问方式，消除了客套开场白，大幅增强了对底层机制的穿透力度。'}
                       </p>
                     </div>
 
-                    <div className="shrink-0 flex items-center space-x-3 bg-gray-900/80 border border-gray-800 px-3.5 py-2 rounded-xl">
+                    <div className="shrink-0 flex items-center space-x-3 bg-surface border border-line-subtle px-3.5 py-2 rounded-xl">
                       <div className="text-right">
-                        <div className="text-[10px] text-gray-500">怀疑度调优</div>
-                        <div className="text-xs font-mono font-bold text-gray-200 flex items-center space-x-1">
+                        <div className="text-[10px] text-content-muted">怀疑度调优</div>
+                        <div className="text-xs font-mono font-bold text-content-primary flex items-center space-x-1">
                           <span>{result.original_spec.skepticism_level.toFixed(2)}</span>
-                          <ArrowRight className="w-3 h-3 text-violet-400 inline" />
-                          <span className="text-violet-300 font-bold">{result.optimized_spec.skepticism_level.toFixed(2)}</span>
+                          <ArrowRight className="w-3 h-3 text-violet-500 dark:text-violet-400 inline" />
+                          <span className="text-violet-600 dark:text-violet-300 font-bold">{result.optimized_spec.skepticism_level.toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
@@ -420,25 +420,25 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
 
                   {/* System Prompt Comparison */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-gray-950/50 border border-gray-800 flex flex-col">
-                      <div className="flex items-center justify-between pb-2 border-b border-gray-800/80 mb-2">
-                        <span className="text-xs font-bold text-gray-400">优化前系统提示词 (Original)</span>
-                        <span className="text-[10px] text-gray-500">长度: {result.original_spec.system_prompt.length} 字</span>
+                    <div className="p-4 rounded-2xl bg-surface-subtle border border-line-subtle flex flex-col">
+                      <div className="flex items-center justify-between pb-2 border-b border-line-subtle mb-2">
+                        <span className="text-xs font-bold text-content-secondary">优化前系统提示词 (Original)</span>
+                        <span className="text-[10px] text-content-muted">长度: {result.original_spec.system_prompt.length} 字</span>
                       </div>
-                      <div className="text-xs text-gray-400 whitespace-pre-wrap font-mono leading-relaxed overflow-y-auto max-h-56 bg-gray-900/40 p-3 rounded-xl border border-gray-900">
+                      <div className="text-xs text-content-secondary whitespace-pre-wrap font-mono leading-relaxed overflow-y-auto max-h-56 bg-surface p-3 rounded-xl border border-line-subtle">
                         {result.original_spec.system_prompt}
                       </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-violet-950/20 border border-violet-800/40 flex flex-col">
-                      <div className="flex items-center justify-between pb-2 border-b border-violet-800/50 mb-2">
-                        <span className="text-xs font-bold text-violet-300 flex items-center space-x-1">
-                          <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                    <div className="p-4 rounded-2xl bg-violet-50/60 border border-violet-200 dark:bg-violet-950/20 dark:border-violet-800/40 flex flex-col">
+                      <div className="flex items-center justify-between pb-2 border-b border-violet-200 dark:border-violet-800/50 mb-2">
+                        <span className="text-xs font-bold text-violet-700 dark:text-violet-300 flex items-center space-x-1">
+                          <Sparkles className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
                           <span>优化后系统提示词 (Optimized)</span>
                         </span>
-                        <span className="text-[10px] text-violet-400/80">长度: {result.optimized_spec.system_prompt.length} 字</span>
+                        <span className="text-[10px] text-violet-500/80 dark:text-violet-400/80">长度: {result.optimized_spec.system_prompt.length} 字</span>
                       </div>
-                      <div className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed overflow-y-auto max-h-56 bg-gray-900/60 p-3 rounded-xl border border-violet-900/30">
+                      <div className="text-xs text-content-primary whitespace-pre-wrap font-mono leading-relaxed overflow-y-auto max-h-56 bg-surface p-3 rounded-xl border border-violet-200 dark:border-violet-900/30">
                         {result.optimized_spec.system_prompt}
                       </div>
                     </div>
@@ -447,16 +447,16 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                   {/* Negative Rules & Golden Few-shots */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Negative Rules */}
-                    <div className="p-4 rounded-2xl bg-gray-950/50 border border-amber-900/30 flex flex-col space-y-2.5">
-                      <div className="flex items-center space-x-1.5 text-xs font-bold text-amber-400">
-                        <ShieldAlert className="w-4 h-4 text-amber-400" />
+                    <div className="p-4 rounded-2xl bg-surface-subtle border border-status-warning-border flex flex-col space-y-2.5">
+                      <div className="flex items-center space-x-1.5 text-xs font-bold text-status-warning">
+                        <ShieldAlert className="w-4 h-4 text-status-warning" />
                         <span>提炼沉淀的【避坑铁律】(采纳后写入记忆库)</span>
                       </div>
                       <div className="space-y-2">
                         {(result.optimized_spec.negative_rules || []).map((rule, idx) => (
                           <div
                             key={idx}
-                            className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-900/40 text-xs text-amber-200/90 leading-relaxed flex items-start space-x-2"
+                            className="p-2.5 rounded-xl bg-status-warning-bg border border-status-warning-border text-amber-700 dark:text-amber-200/90 leading-relaxed flex items-start space-x-2"
                           >
                             <span className="text-amber-500 font-bold shrink-0">{idx + 1}.</span>
                             <span>{rule}</span>
@@ -466,16 +466,16 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                     </div>
 
                     {/* Golden Few-shots */}
-                    <div className="p-4 rounded-2xl bg-gray-950/50 border border-emerald-900/30 flex flex-col space-y-2.5">
-                      <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-400">
-                        <Award className="w-4 h-4 text-emerald-400" />
+                    <div className="p-4 rounded-2xl bg-surface-subtle border border-status-success-border flex flex-col space-y-2.5">
+                      <div className="flex items-center space-x-1.5 text-xs font-bold text-status-success">
+                        <Award className="w-4 h-4 text-status-success" />
                         <span>提炼沉淀的【黄金示范出题】(采纳后写入记忆库)</span>
                       </div>
                       <div className="space-y-2">
                         {(result.optimized_spec.golden_few_shots || []).map((shot, idx) => (
                           <div
                             key={idx}
-                            className="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-900/40 text-xs text-emerald-200/90 leading-relaxed flex items-start space-x-2"
+                            className="p-2.5 rounded-xl bg-status-success-bg border border-status-success-border text-emerald-700 dark:text-emerald-200/90 leading-relaxed flex items-start space-x-2"
                           >
                             <span className="text-emerald-500 font-bold shrink-0">✨</span>
                             <span className="italic">“{shot}”</span>
@@ -498,27 +498,27 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
                         className={`flex gap-3 ${isInterviewer ? 'justify-start' : 'justify-end'}`}
                       >
                         {isInterviewer && (
-                          <div className="w-8 h-8 rounded-xl bg-violet-950/60 border border-violet-800/60 flex items-center justify-center text-sm shrink-0">
+                          <div className="w-8 h-8 rounded-xl bg-violet-50 border border-violet-200 dark:bg-violet-950/60 dark:border-violet-800/60 flex items-center justify-center text-sm shrink-0">
                             {persona.avatar || '🎭'}
                           </div>
                         )}
                         <div
                           className={`max-w-2xl rounded-2xl p-3.5 text-xs leading-relaxed space-y-1 ${
                             isInterviewer
-                              ? 'bg-gray-900/80 border border-gray-800 text-gray-200'
-                              : 'bg-indigo-950/40 border border-indigo-800/50 text-indigo-100'
+                              ? 'bg-surface-subtle border border-line-subtle text-content-primary'
+                              : 'bg-indigo-50 border border-indigo-200 text-indigo-900 dark:bg-indigo-950/40 dark:border-indigo-800/50 dark:text-indigo-100'
                           }`}
                         >
-                          <div className="flex items-center justify-between text-[11px] text-gray-400">
-                            <span className="font-semibold text-gray-300">
+                          <div className="flex items-center justify-between text-[11px] text-content-muted">
+                            <span className="font-semibold text-content-secondary">
                               {isInterviewer ? `${persona.name} (第${msg.round}轮提问)` : `合成候选人 (${CANDIDATE_BEHAVIORS.find(c => c.key === candidateBehavior)?.label})`}
                             </span>
                           </div>
                           <div className="whitespace-pre-wrap">{msg.content}</div>
                         </div>
                         {!isInterviewer && (
-                          <div className="w-8 h-8 rounded-xl bg-indigo-950/60 border border-indigo-800/60 flex items-center justify-center text-sm shrink-0">
-                            <User className="w-4 h-4 text-indigo-300" />
+                          <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 dark:bg-indigo-950/60 dark:border-indigo-800/60 flex items-center justify-center text-sm shrink-0">
+                            <User className="w-4 h-4 text-indigo-500 dark:text-indigo-300" />
                           </div>
                         )}
                       </div>
@@ -530,47 +530,47 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
               {/* Tab 3: Critic Report */}
               {activeTab === 'critic' && (
                 <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-                  <div className="p-4 rounded-2xl bg-gray-950/70 border border-gray-800 flex items-center justify-between">
+                  <div className="p-4 rounded-2xl bg-surface-subtle border border-line-subtle flex items-center justify-between">
                     <div>
-                      <div className="text-xs font-bold text-gray-200">Critic 诊断评分与结论</div>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs font-bold text-content-primary">Critic 诊断评分与结论</div>
+                      <p className="text-xs text-content-secondary mt-1">
                         {result.critic_report.overall_evaluation || '该面试官风格明确，但在应对套话回答时仍需强化极限追问，避免被表面术语带偏。'}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="text-[10px] text-gray-500">综合诊断分</div>
-                      <div className="text-xl font-bold font-mono text-violet-400">
+                      <div className="text-[10px] text-content-muted">综合诊断分</div>
+                      <div className="text-xl font-bold font-mono text-violet-600 dark:text-violet-400">
                         {result.critic_report.critique_score || 8.0}
-                        <span className="text-xs text-gray-500"> / 10.0</span>
+                        <span className="text-xs text-content-muted"> / 10.0</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-2.5">
-                    <span className="text-xs font-bold text-gray-300">检测到的缺陷项与改进建议 ({result.critic_report.defects?.length || 0}项)</span>
+                    <span className="text-xs font-bold text-content-secondary">检测到的缺陷项与改进建议 ({result.critic_report.defects?.length || 0}项)</span>
                     {(result.critic_report.defects || []).length === 0 ? (
-                      <div className="p-6 text-center text-xs text-gray-400 bg-gray-950/40 rounded-2xl border border-gray-800">
+                      <div className="p-6 text-center text-xs text-content-secondary bg-surface-subtle rounded-2xl border border-line-subtle">
                         未检测到明显失真缺陷，面试官综合表现良好
                       </div>
                     ) : (
                       result.critic_report.defects?.map((defect, idx) => (
                         <div
                           key={idx}
-                          className="p-3.5 rounded-2xl bg-gray-950/50 border border-gray-800/80 space-y-1.5"
+                          className="p-3.5 rounded-2xl bg-surface-subtle border border-line-subtle space-y-1.5"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-rose-300 flex items-center space-x-1.5">
+                            <span className="text-xs font-semibold text-rose-600 dark:text-rose-300 flex items-center space-x-1.5">
                               <AlertCircleIcon />
                               <span>{defect.description}</span>
                             </span>
                             {defect.severity && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950/60 border border-rose-800/50 text-rose-300 uppercase">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 dark:bg-rose-950/60 dark:border-rose-800/50 dark:text-rose-300 uppercase">
                                 {defect.severity}
                               </span>
                             )}
                           </div>
                           {defect.suggestion && (
-                            <p className="text-xs text-gray-400 pl-4 border-l-2 border-violet-500/40 mt-1">
+                            <p className="text-xs text-content-secondary pl-4 border-l-2 border-violet-400 dark:border-violet-500/40 mt-1">
                               建议: {defect.suggestion}
                             </p>
                           )}
@@ -586,20 +586,20 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
 
         {/* Modal Bottom Actions */}
         {result && (
-          <div className="px-6 py-4 bg-gray-950/70 border-t border-gray-800 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="px-6 py-4 bg-surface-subtle border-t border-line-subtle shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center space-x-2 w-full sm:w-auto">
               <input
                 type="text"
                 value={customV2Name}
                 onChange={(e) => setCustomV2Name(e.target.value)}
                 placeholder="新版本名称"
-                className="text-xs px-3 py-2 rounded-xl bg-gray-900 border border-gray-800 text-gray-200 focus:outline-none focus:border-violet-500 w-44"
+                className="text-xs px-3 py-2 rounded-xl bg-surface border border-line-default text-content-primary focus:outline-none focus:border-violet-500 w-44"
               />
               <button
                 type="button"
                 onClick={() => handleApply('save_as_new')}
                 disabled={applying}
-                className="text-xs px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 transition font-medium disabled:opacity-50"
+                className="text-xs px-3.5 py-2 rounded-xl bg-surface-hover hover:bg-surface-active text-content-primary transition font-medium disabled:opacity-50"
               >
                 另存为新版本
               </button>
@@ -609,7 +609,7 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-xs px-3.5 py-2 rounded-xl bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white transition"
+                className="text-xs px-3.5 py-2 rounded-xl bg-transparent hover:bg-surface-hover text-content-secondary hover:text-content-primary transition"
               >
                 放弃本次优化
               </button>
@@ -632,7 +632,7 @@ export const PersonaEvolutionModal: React.FC<PersonaEvolutionModalProps> = ({
 
 const AlertCircleIcon: React.FC = () => (
   <svg
-    className="w-3.5 h-3.5 text-rose-400 shrink-0"
+    className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 shrink-0"
     fill="none"
     stroke="currentColor"
     viewBox="0 0 24 24"

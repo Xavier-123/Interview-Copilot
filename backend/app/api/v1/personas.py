@@ -1,13 +1,12 @@
 import logging
 import uuid
-import secrets
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import get_db
-from app.models.persona import InterviewerPersona, PersonaMemoryModel
+from app.models.persona import PersonaMemoryModel
+from app.services.persona_store import PersonaData, persona_store, persona_to_snapshot
 from app.services.evolution.persona_evolver import persona_evolver
 
 logger = logging.getLogger(__name__)
@@ -15,38 +14,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/personas", tags=["personas"])
 
 MAX_SYSTEM_PROMPT_LENGTH = 2000
-PERSONA_KEY_PREFIX = "persona_"
 
 
-def _generate_persona_key() -> str:
-    """生成消息 name / 路由标识用的短 key（interview_messages.name 限 32 字符）。"""
-    return f"{PERSONA_KEY_PREFIX}{secrets.token_hex(4)}"
-
-
-def _persona_snapshot(p: InterviewerPersona) -> dict:
+def _persona_snapshot(p: PersonaData) -> dict:
     """返回写入会话 custom_config 的完整人设快照。"""
-    return {
-        "id": p.id,
-        "key": p.key,
-        "name": p.name,
-        "avatar": p.avatar or "🎭",
-        "description": p.description or "",
-        "system_prompt": p.system_prompt,
-        "focus_topics": p.focus_topics or [],
-        "opening_hint": p.opening_hint or "",
-        "deep_dive_hint": p.deep_dive_hint or "",
-        "probe_hint": p.probe_hint or "",
-        "switch_hint": p.switch_hint or "",
-        "school_of_thought": getattr(p, "school_of_thought", "standard") or "standard",
-        "dislikes": getattr(p, "dislikes", []) or [],
-        "preferences": getattr(p, "preferences", []) or [],
-        "skepticism_level": float(getattr(p, "skepticism_level", 0.5) or 0.5),
-        "interaction_traits": getattr(p, "interaction_traits", {}) or {},
-    }
+    return persona_to_snapshot(p)
 
 
-def _persona_response(p: InterviewerPersona) -> dict:
-    data = _persona_snapshot(p)
+def _persona_response(p: PersonaData) -> dict:
+    data = persona_to_snapshot(p)
     data["enabled"] = bool(p.enabled)
     data["created_at"] = p.created_at.isoformat() if p.created_at else None
     data["updated_at"] = p.updated_at.isoformat() if p.updated_at else None
@@ -77,11 +53,8 @@ class PersonaPayload(BaseModel):
         return cleaned[:8]
 
 
-async def _get_persona(persona_id: str, db: AsyncSession) -> InterviewerPersona:
-    result = await db.execute(
-        select(InterviewerPersona).where(InterviewerPersona.id == persona_id)
-    )
-    persona = result.scalars().first()
+async def _get_persona(persona_id: str) -> PersonaData:
+    persona = await persona_store.get_persona(persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="面试官角色不存在")
     return persona
@@ -95,26 +68,18 @@ async def get_persona_presets():
 
 
 @router.get("")
-async def list_personas(
-    db: AsyncSession = Depends(get_db),
-):
-    """列出全部自定义面试官角色（本地单用户）。"""
-    result = await db.execute(
-        select(InterviewerPersona)
-        .order_by(InterviewerPersona.created_at.desc())
-    )
-    return {"personas": [_persona_response(p) for p in result.scalars().all()]}
+async def list_personas():
+    """列出全部自定义面试官角色（本地单用户，数据存于 JSON 文件目录）。"""
+    personas = await persona_store.list_personas()
+    return {"personas": [_persona_response(p) for p in personas]}
 
 
 @router.post("")
-async def create_persona(
-    payload: PersonaPayload,
-    db: AsyncSession = Depends(get_db),
-):
+async def create_persona(payload: PersonaPayload):
     """创建自定义面试官角色。"""
-    persona = InterviewerPersona(
+    persona = PersonaData(
         id=str(uuid.uuid4()),
-        key=_generate_persona_key(),
+        key=await persona_store.generate_key(),
         name=payload.name.strip(),
         avatar=payload.avatar or "🎭",
         description=payload.description.strip(),
@@ -131,9 +96,7 @@ async def create_persona(
         interaction_traits=payload.interaction_traits or {},
         enabled=payload.enabled,
     )
-    db.add(persona)
-    await db.commit()
-    await db.refresh(persona)
+    await persona_store.save(persona)
 
     # 同步为不可变 InterviewerVersion 并记录审计
     try:
@@ -146,13 +109,9 @@ async def create_persona(
 
 
 @router.put("/{persona_id}")
-async def update_persona(
-    persona_id: str,
-    payload: PersonaPayload,
-    db: AsyncSession = Depends(get_db),
-):
+async def update_persona(persona_id: str, payload: PersonaPayload):
     """更新自定义面试官角色（自动生成新版本，不影响已快照进历史会话的人设）。"""
-    persona = await _get_persona(persona_id, db)
+    persona = await _get_persona(persona_id)
     persona.name = payload.name.strip()
     persona.avatar = payload.avatar or "🎭"
     persona.description = payload.description.strip()
@@ -168,8 +127,7 @@ async def update_persona(
     persona.skepticism_level = payload.skepticism_level
     persona.interaction_traits = payload.interaction_traits or {}
     persona.enabled = payload.enabled
-    await db.commit()
-    await db.refresh(persona)
+    await persona_store.save(persona)
 
     # 产生新版本并记录审计
     try:
@@ -182,16 +140,10 @@ async def update_persona(
 
 
 @router.delete("/{persona_id}")
-async def delete_persona(
-    persona_id: str,
-    db: AsyncSession = Depends(get_db),
-):
+async def delete_persona(persona_id: str):
     """删除自定义面试官角色（已创建的会话使用快照，不受影响）。"""
-    persona = await _get_persona(persona_id, db)
-    persona_key = persona.key
-    persona_name = persona.name
-    await db.delete(persona)
-    await db.commit()
+    persona = await _get_persona(persona_id)
+    await persona_store.delete(persona_id)
 
     try:
         from app.services.audit import log_audit_event
@@ -199,7 +151,7 @@ async def delete_persona(
             event_type="persona_deleted",
             actor="user",
             target_id=persona_id,
-            payload={"key": persona_key, "name": persona_name}
+            payload={"key": persona.key, "name": persona.name}
         )
     except Exception as e:
         logger.warning(f"Failed to log persona deletion audit: {e}")
@@ -227,10 +179,9 @@ class ApplyEvolutionRequest(BaseModel):
 async def auto_evolve_persona(
     persona_id: str,
     req: AutoEvolveRequest = AutoEvolveRequest(),
-    db: AsyncSession = Depends(get_db),
 ):
     """一键触发该角色的仿真推演对战、Critic 诊断与 Optimizer 优化提案生成。"""
-    persona = await _get_persona(persona_id, db)
+    persona = await _get_persona(persona_id)
     try:
         result = await persona_evolver.run_persona_evolution(
             persona=persona,
@@ -250,15 +201,15 @@ async def apply_persona_evolution(
     db: AsyncSession = Depends(get_db),
 ):
     """采纳并固化进化成果：更新人设或另存为新版本，并将避坑铁律与黄金范例写入记忆库。"""
-    source_persona = await _get_persona(persona_id, db)
-    target_persona: InterviewerPersona
+    source_persona = await _get_persona(persona_id)
+    target_persona: PersonaData
 
     if req.apply_mode == "save_as_new":
         # 另存为衍生新版本
         target_name = (req.new_name or f"{source_persona.name} (V2)").strip()
-        target_persona = InterviewerPersona(
+        target_persona = PersonaData(
             id=str(uuid.uuid4()),
-            key=_generate_persona_key(),
+            key=await persona_store.generate_key(),
             name=target_name,
             avatar=source_persona.avatar or "🎭",
             description=f"{source_persona.description}（由AI演进优化升级）",
@@ -275,7 +226,6 @@ async def apply_persona_evolution(
             interaction_traits=source_persona.interaction_traits or {},
             enabled=True,
         )
-        db.add(target_persona)
     else:
         # 直接覆盖升级当前角色
         target_persona = source_persona
@@ -288,7 +238,8 @@ async def apply_persona_evolution(
         if req.probe_hint:
             target_persona.probe_hint = req.probe_hint.strip()
 
-    await db.flush()
+    # 人设正文先落盘，再沉淀经验记忆
+    await persona_store.save(target_persona)
 
     # 将新沉淀的避坑铁律与黄金提问范例固化到 PersonaMemoryModel
     target_key = target_persona.key
@@ -317,7 +268,6 @@ async def apply_persona_evolution(
             ))
 
     await db.commit()
-    await db.refresh(target_persona)
 
     # 记录审计事件
     try:

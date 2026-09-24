@@ -31,7 +31,8 @@ async def get_db():
             await session.close()
 
 # 含 user_id 遗留列的表：SQLite 无法直接 DROP 参与 FOREIGN KEY 定义的列，需整表重建
-_LEGACY_USER_TABLES = ("interview_sessions", "interviewer_personas", "user_resumes")
+# （interviewer_personas 已改为 JSON 文件存储，由 persona_store 负责历史数据迁移）
+_LEGACY_USER_TABLES = ("interview_sessions", "user_resumes")
 
 
 def _rebuild_tables_without_user_id(sync_conn) -> None:
@@ -107,19 +108,6 @@ async def init_db():
             ))
         except Exception:
             pass  # Legacy rows already backfilled or table empty
-        # InterviewerPersona 流派画像字段
-        for col, dtype in [
-            ("school_of_thought", "VARCHAR(32) DEFAULT 'standard'"),
-            ("dislikes", "JSON"),
-            ("preferences", "JSON"),
-            ("skepticism_level", "FLOAT DEFAULT 0.5"),
-            ("interaction_traits", "JSON"),
-        ]:
-            try:
-                await conn.execute(text(f"ALTER TABLE interviewer_personas ADD COLUMN {col} {dtype}"))
-            except Exception:
-                pass
-
         # evolution_candidates 进化表扩展字段
         for col, dtype in [
             ("interviewer_id", "VARCHAR(64)"),

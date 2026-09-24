@@ -1,6 +1,7 @@
 import json
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.agents.llm import LLMError
 from app.services.session_manager import session_manager
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,13 @@ async def interview_websocket_endpoint(websocket: WebSocket, session_id: str):
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected for session {session_id}")
+    except LLMError as e:
+        # 模型链路失败：把可读原因直接推给前端，不伪装成正常轮次
+        logger.error(f"LLM unavailable in session {session_id}: {e.public_message}")
+        try:
+            await websocket.send_json({"type": "error", "message": e.public_message})
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"WebSocket error in session {session_id}: {e}")
         try:

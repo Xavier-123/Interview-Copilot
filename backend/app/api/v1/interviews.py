@@ -2,6 +2,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
+from app.agents.llm import LLMError
 from app.services.session_manager import session_manager
 from app.services.memory import memory_gateway
 from app.core.config import settings
@@ -31,6 +32,8 @@ class SearchRuntimeConfig(BaseModel):
 
 class AnswerRequest(BaseModel):
     message: str = Field(min_length=1, max_length=settings.MAX_ANSWER_BYTES)
+    code: Optional[str] = None
+    code_language: Optional[str] = None
     search_config: Optional[SearchRuntimeConfig] = None
 
 class SimulateAnswerRequest(BaseModel):
@@ -89,6 +92,8 @@ async def create_interview_session(req: CreateSessionRequest):
             "web_search_enabled": state.get("web_search_enabled", False),
             "status": state["status"]
         }
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -110,6 +115,8 @@ async def start_interview(session_id: str):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -120,6 +127,8 @@ async def submit_answer(session_id: str, req: AnswerRequest):
         new_state = await session_manager.submit_candidate_answer(
             session_id,
             req.message,
+            code=req.code,
+            code_language=req.code_language,
             search_config=req.search_config.model_dump() if req.search_config else None,
         )
         return {
@@ -128,6 +137,8 @@ async def submit_answer(session_id: str, req: AnswerRequest):
             "current_interviewer": new_state.get("current_interviewer"),
             "round_count": new_state.get("round_count"),
             "messages": new_state.get("messages", []),
+            "current_code": new_state.get("current_code"),
+            "code_language": new_state.get("code_language"),
             "turn_id": new_state.get("turn_id"),
             "trace_id": new_state.get("trace_id"),
             "question_intent": new_state.get("question_intent"),
@@ -136,6 +147,8 @@ async def submit_answer(session_id: str, req: AnswerRequest):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -148,6 +161,8 @@ async def pause_interview(session_id: str, req: Optional[PauseRequest] = None):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -159,6 +174,8 @@ async def resume_interview(session_id: str):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -170,6 +187,8 @@ async def redo_turn(session_id: str):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -187,6 +206,8 @@ async def restart_interview(session_id: str):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -213,6 +234,8 @@ async def simulate_standard_answer(session_id: str, req: Optional[SimulateAnswer
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -225,6 +248,8 @@ async def toggle_web_search(session_id: str, req: Optional[ToggleWebSearchReques
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -235,6 +260,8 @@ async def set_memory_consent(session_id: str, req: MemoryConsentRequest):
         return await session_manager.set_memory_consent(session_id, req.enabled)
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -257,6 +284,8 @@ async def approve_evolution_candidate(candidate_id: str):
         return await session_manager.approve_evolution_candidate(candidate_id)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -272,6 +301,8 @@ async def finish_and_evaluate(session_id: str):
         }
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -303,6 +334,8 @@ async def compare_interview_sessions(req: CompareRequest):
         return result
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 

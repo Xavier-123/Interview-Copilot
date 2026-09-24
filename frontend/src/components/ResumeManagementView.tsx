@@ -27,27 +27,10 @@ import type {
   ResumePolishApplyResult,
 } from '../types';
 import { apiFetch } from '../utils/api';
+import { useTheme } from '../context/ThemeContext';
+import { calculateResumeCompleteness } from '../utils/resumeUtils';
+import { ResumeEditorModal, type ResumeEditorFormState } from './ResumeEditorModal';
 
-// 编辑弹窗表单状态（画像字段平铺，列表型字段以分隔符文本编辑）
-interface EditProjectForm {
-  name: string;
-  role: string;
-  tech_stack: string;
-  highlights: string;
-}
-
-interface EditFormState {
-  id: string;
-  filename: string;
-  raw_text: string;
-  name: string;
-  experience_years: string;
-  skills: string;
-  education: string;
-  summary_profile: string;
-  projects: EditProjectForm[];
-  reparse: boolean;
-}
 
 const splitList = (value: string): string[] =>
   value
@@ -92,6 +75,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   onBack,
   onSelectResumeForMock,
 }) => {
+  const { isDark } = useTheme();
   const [resumes, setResumes] = useState<SavedResumeItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [uploading, setUploading] = useState<boolean>(false);
@@ -101,7 +85,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [pastedText, setPastedText] = useState<string>('');
   const [pastedTitle, setPastedTitle] = useState<string>('');
-  const [editingResume, setEditingResume] = useState<EditFormState | null>(null);
+  const [editorResumeDetail, setEditorResumeDetail] = useState<SavedResumeDetail | null>(null);
   const [savingEdit, setSavingEdit] = useState<boolean>(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -202,39 +186,21 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
     }
   };
 
-  // Open edit modal with current resume values
+  // Open modern edit modal with current resume values
   const handleEdit = async (resumeId: string) => {
     try {
-      const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeId}`);
-      const profile = data.parsed_profile || {};
       setEditError(null);
-      setEditingResume({
-        id: data.id,
-        filename: data.filename,
-        raw_text: data.raw_text,
-        name: profile.name || '',
-        experience_years: profile.experience_years != null ? String(profile.experience_years) : '',
-        skills: (profile.skills || []).join(', '),
-        education: profile.education || '',
-        summary_profile: profile.summary_profile || '',
-        projects: (profile.projects || []).map((p) => ({
-          name: p.name || '',
-          role: p.role || '',
-          tech_stack: (p.tech_stack || []).join(', '),
-          highlights: p.highlights || '',
-        })),
-        reparse: false,
-      });
+      const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${resumeId}`);
+      setEditorResumeDetail(data);
     } catch (err) {
       console.error('Failed to open resume editor:', err);
     }
   };
 
   // Persist edit via PUT, then refresh list and any open preview
-  const handleSaveEdit = async () => {
-    if (!editingResume) return;
-    const filename = editingResume.filename.trim();
-    const rawText = editingResume.raw_text.trim();
+  const handleSaveEdit = async (form: ResumeEditorFormState) => {
+    const filename = form.filename.trim();
+    const rawText = form.raw_text.trim();
     if (!filename || !rawText) {
       setEditError('简历标题与原文内容不能为空');
       return;
@@ -246,16 +212,17 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
       const body: Record<string, unknown> = {
         filename,
         raw_text: rawText,
-        reparse: editingResume.reparse,
+        reparse: form.reparse,
       };
-      if (!editingResume.reparse) {
+      if (!form.reparse) {
         body.parsed_profile = {
-          name: editingResume.name.trim() || '候选人',
-          experience_years: editingResume.experience_years
-            ? Number(editingResume.experience_years)
+          name: form.name.trim() || '候选人',
+          job_role: form.job_role.trim() || undefined,
+          experience_years: form.experience_years
+            ? Number(form.experience_years)
             : undefined,
-          skills: splitList(editingResume.skills),
-          projects: editingResume.projects
+          skills: form.skills,
+          projects: form.projects
             .filter((p) => p.name.trim() || p.highlights.trim())
             .map((p) => ({
               name: p.name.trim(),
@@ -263,17 +230,17 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
               tech_stack: splitList(p.tech_stack),
               highlights: p.highlights.trim(),
             })),
-          education: editingResume.education.trim(),
-          summary_profile: editingResume.summary_profile.trim(),
+          education: form.education.trim(),
+          summary_profile: form.summary_profile.trim(),
         };
       }
 
-      const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${editingResume.id}`, {
+      const data = await apiFetch<SavedResumeDetail>(`/api/v1/profiles/resumes/${form.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      setEditingResume(null);
+      setEditorResumeDetail(null);
       setUploadSuccess(`简历已更新: ${data.filename}`);
       await fetchResumes();
       if (previewResume?.id === data.id) setPreviewResume(data);
@@ -387,33 +354,47 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 space-y-6 animate-fade-in">
       {/* 1. Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800 pb-5">
+      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-5 transition-colors ${
+        isDark ? 'border-gray-800' : 'border-gray-200'
+      }`}>
         <div>
           <button
             onClick={onBack}
-            className="inline-flex items-center space-x-1.5 text-xs text-gray-400 hover:text-white transition mb-2 cursor-pointer"
+            className={`inline-flex items-center space-x-1.5 text-xs transition mb-2 cursor-pointer ${
+              isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+            }`}
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>返回首页工作台</span>
           </button>
           <div className="flex items-center space-x-3">
-            <h1 className="text-2xl font-bold text-white flex items-center space-x-2">
-              <FileText className="w-6 h-6 text-purple-400" />
+            <h1 className={`text-2xl font-bold flex items-center space-x-2.5 ${
+              isDark ? 'text-white' : 'text-gray-900'
+            }`}>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                isDark ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'bg-blue-50 text-blue-600 border border-blue-200'
+              }`}>
+                <FileText className="w-4.5 h-4.5" />
+              </div>
               <span>简历管理中心</span>
             </h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-900/50 text-purple-300 border border-purple-700/50">
+            <span className={`text-xs px-2.5 py-0.5 rounded-full border font-mono ${
+              isDark
+                ? 'bg-blue-950/60 text-blue-300 border-blue-800/40'
+                : 'bg-blue-50 text-blue-700 border-blue-200'
+            }`}>
               共 {resumes.length} 份
             </span>
           </div>
-          <p className="text-xs text-gray-400 mt-1">
-            集中管理不同职位方向与定制版本的简历，支持 AI 深度画像解析并一键带入全真模拟对练。
+          <p className={`text-xs mt-1.5 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            集中管理不同职位方向与定制版本的简历，实时监控完整度并支持全真模拟对练与 AI 视角深度体检。
           </p>
         </div>
 
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setShowUploadModal(true)}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs shadow-lg shadow-purple-600/30 transition cursor-pointer"
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md shadow-blue-600/20 hover:shadow-blue-600/30 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>上传或录入新简历</span>
@@ -448,23 +429,29 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
       {/* 2. Resume Cards Grid */}
       {loading ? (
         <div className="py-20 text-center space-y-3">
-          <Loader2 className="w-8 h-8 text-purple-400 animate-spin mx-auto" />
-          <p className="text-xs text-gray-400">正在加载简历库...</p>
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
+          <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>正在加载简历库...</p>
         </div>
       ) : resumes.length === 0 ? (
-        <div className="py-16 text-center border border-dashed border-gray-800 rounded-2xl p-8 space-y-4 bg-gray-900/30">
-          <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mx-auto">
+        <div className={`py-16 text-center border border-dashed rounded-2xl p-8 space-y-4 ${
+          isDark ? 'border-gray-800 bg-gray-900/30' : 'border-gray-300 bg-white shadow-xs'
+        }`}>
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto ${
+            isDark ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400' : 'bg-blue-50 border border-blue-200 text-blue-600'
+          }`}>
             <FileText className="w-7 h-7" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-base font-bold text-white">暂未录入任何简历</h3>
-            <p className="text-xs text-gray-400 max-w-md mx-auto">
+            <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              暂未录入任何简历
+            </h3>
+            <p className={`text-xs max-w-md mx-auto ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               上传你的第一份简历（PDF、Word、TXT），AI 将自动为你提取核心技能栈并结构化解析，随后即可针对性发起模拟面试。
             </p>
           </div>
           <button
             onClick={() => setShowUploadModal(true)}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition cursor-pointer shadow-md shadow-blue-600/20"
           >
             <Upload className="w-3.5 h-3.5" />
             <span>立即上传简历</span>
@@ -475,28 +462,43 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
           {resumes.map((resume) => {
             const profile = resume.parsed_profile || {};
             const skills: string[] = profile.skills || [];
-            const role = profile.title || profile.job_role || profile.name || '通用候选人';
+            const role = profile.job_role || profile.title || '通用岗位候选人';
             const expYears = profile.experience_years ? `${profile.experience_years}年经验` : null;
+            const completeness = calculateResumeCompleteness(resume.parsed_profile, resume.raw_text_preview);
 
             return (
               <div
                 key={resume.id}
-                className="group relative rounded-2xl bg-gray-900/70 border border-gray-800 hover:border-purple-600/60 p-5 transition-all duration-200 hover:shadow-xl hover:shadow-purple-950/20 flex flex-col justify-between"
+                className={`group relative rounded-2xl border p-5 transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between ${
+                  isDark
+                    ? 'bg-gray-900/70 border-gray-800 hover:border-blue-500/50 hover:shadow-[0_16px_36px_rgba(0,0,0,0.5)]'
+                    : 'bg-white border-gray-200/90 hover:border-blue-500/40 hover:shadow-[0_16px_36px_rgba(37,99,235,0.08)]'
+                }`}
               >
                 <div className="space-y-3.5">
                   {/* Title & Actions */}
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center space-x-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-                        <FileText className="w-4 h-4" />
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        isDark ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400' : 'bg-blue-50 border border-blue-200 text-blue-600'
+                      }`}>
+                        <FileText className="w-4.5 h-4.5" />
                       </div>
                       <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-white truncate group-hover:text-purple-300 transition" title={resume.filename}>
+                        <h3
+                          className={`text-sm font-bold truncate transition cursor-pointer ${
+                            isDark ? 'text-white group-hover:text-blue-400' : 'text-gray-900 group-hover:text-blue-600'
+                          }`}
+                          title={resume.filename}
+                          onClick={() => handleEdit(resume.id)}
+                        >
                           {resume.filename}
                         </h3>
-                        <div className="flex items-center space-x-2 text-[11px] text-gray-400 mt-0.5">
+                        <div className={`flex items-center space-x-2 text-[11px] mt-0.5 ${
+                          isDark ? 'text-gray-400' : 'text-gray-500'
+                        }`}>
                           <span className="flex items-center space-x-1">
-                            <Calendar className="w-3 h-3 text-gray-400" />
+                            <Calendar className="w-3 h-3 opacity-70" />
                             <span>{formatDate(resume.created_at)}</span>
                           </span>
                         </div>
@@ -509,35 +511,74 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                           e.stopPropagation();
                           handleEdit(resume.id);
                         }}
-                        title="编辑该简历"
-                        className="p-1.5 text-gray-400 hover:text-purple-300 hover:bg-purple-950/40 rounded-lg transition cursor-pointer"
+                        title="完善与编辑"
+                        className={`p-1.5 rounded-lg transition cursor-pointer ${
+                          isDark
+                            ? 'text-gray-400 hover:text-blue-300 hover:bg-blue-950/40'
+                            : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                        }`}
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
                         onClick={(e) => handleDelete(resume.id, resume.filename, e)}
                         title="删除该简历"
-                        className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg transition cursor-pointer"
+                        className={`p-1.5 rounded-lg transition cursor-pointer ${
+                          isDark
+                            ? 'text-gray-400 hover:text-red-400 hover:bg-red-950/40'
+                            : 'text-gray-500 hover:text-red-600 hover:bg-red-50'
+                        }`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
 
+                  {/* Completeness bar & score indicator */}
+                  <div className={`p-2.5 rounded-xl border transition ${
+                    isDark ? 'bg-gray-950/50 border-gray-800/80' : 'bg-gray-50/80 border-gray-100'
+                  }`}>
+                    <div className="flex items-center justify-between text-[11px] mb-1.5">
+                      <span className={`font-medium flex items-center space-x-1.5 ${
+                        isDark ? 'text-gray-300' : 'text-gray-700'
+                      }`}>
+                        <Sparkles className="w-3 h-3 text-blue-500" />
+                        <span>简历完整度</span>
+                      </span>
+                      <span className={`font-semibold font-mono text-[11px] ${completeness.feedback.color}`}>
+                        {completeness.score}% · {completeness.feedback.badgeText}
+                      </span>
+                    </div>
+                    <div className={`h-1.5 w-full rounded-full overflow-hidden ${
+                      isDark ? 'bg-gray-800' : 'bg-gray-200'
+                    }`}>
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${completeness.feedback.bgGradient}`}
+                        style={{ width: `${completeness.score}%` }}
+                      />
+                    </div>
+                  </div>
+
                   {/* Profile Tags */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                     {resume.source_resume_id && (
-                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-800/40 text-[11px] text-purple-300">
+                      <span className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md border text-[11px] ${
+                        isDark ? 'bg-emerald-950/60 border-emerald-800/40 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      }`}>
                         <Wand2 className="w-3 h-3" />
                         <span>AI 优化版</span>
                       </span>
                     )}
-                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-blue-950/60 border border-blue-800/40 text-[11px] text-blue-300">
+                    <span className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md border text-[11px] ${
+                      isDark ? 'bg-blue-950/60 border-blue-800/40 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+                    }`}>
                       <Briefcase className="w-3 h-3" />
                       <span>{role}</span>
                     </span>
                     {expYears && (
-                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-indigo-950/60 border border-indigo-800/40 text-[11px] text-indigo-300">
+                      <span className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md border text-[11px] ${
+                        isDark ? 'bg-indigo-950/60 border-indigo-800/40 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                      }`}>
                         <span>{expYears}</span>
                       </span>
                     )}
@@ -545,57 +586,82 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
 
                   {/* Core Skills Preview */}
                   {skills.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-[11px] text-gray-400 flex items-center space-x-1">
-                        <Tag className="w-3 h-3 text-purple-400" />
+                    <div className="space-y-1.5">
+                      <div className={`text-[11px] flex items-center space-x-1 ${
+                        isDark ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
+                        <Tag className="w-3 h-3 text-blue-500" />
                         <span>核心技术栈 ({skills.length}):</span>
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {skills.slice(0, 6).map((sk, idx) => (
                           <span
                             key={idx}
-                            className="px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 text-[11px] border border-gray-700/60"
+                            className={`px-2 py-0.5 rounded text-[11px] border ${
+                              isDark ? 'bg-gray-800/80 text-gray-300 border-gray-700/60' : 'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}
                           >
                             {sk}
                           </span>
                         ))}
                         {skills.length > 6 && (
-                          <span className="px-1.5 py-0.5 rounded bg-gray-800/50 text-gray-400 text-[10px]">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                            isDark ? 'bg-gray-800/50 text-gray-400' : 'bg-gray-100 text-gray-500'
+                          }`}>
                             +{skills.length - 6}
                           </span>
                         )}
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-400 line-clamp-2 italic">
+                    <p className={`text-xs line-clamp-2 italic ${
+                      isDark ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
                       {resume.raw_text_preview || '未提取到特定技术栈'}
                     </p>
                   )}
                 </div>
 
                 {/* Bottom Actions */}
-                <div className="mt-5 pt-3 border-t border-gray-800/70 flex items-center justify-between gap-2">
+                <div className={`mt-5 pt-3 border-t flex items-center justify-between gap-2 ${
+                  isDark ? 'border-gray-800/70' : 'border-gray-100'
+                }`}>
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => handleViewDetail(resume.id)}
-                      className="inline-flex items-center space-x-1 text-xs text-gray-400 hover:text-purple-300 transition cursor-pointer px-2 py-1 rounded hover:bg-gray-800"
+                      onClick={() => handleEdit(resume.id)}
+                      className={`inline-flex items-center space-x-1 text-xs transition cursor-pointer px-2 py-1 rounded ${
+                        isDark ? 'text-gray-400 hover:text-blue-300 hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'
+                      }`}
+                      title="完善与编辑简历"
                     >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>预览详情</span>
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>完善与编辑</span>
                     </button>
                     <button
                       onClick={() => openPolish(resume.id, resume.filename)}
                       title="AI 从面试官视角体检这份简历"
-                      className="inline-flex items-center space-x-1 text-xs text-gray-400 hover:text-amber-300 transition cursor-pointer px-2 py-1 rounded hover:bg-gray-800"
+                      className={`inline-flex items-center space-x-1 text-xs transition cursor-pointer px-2 py-1 rounded ${
+                        isDark ? 'text-gray-400 hover:text-amber-300 hover:bg-gray-800' : 'text-gray-600 hover:text-amber-600 hover:bg-gray-100'
+                      }`}
                     >
                       <Wand2 className="w-3.5 h-3.5" />
                       <span>AI 体检</span>
+                    </button>
+                    <button
+                      onClick={() => handleViewDetail(resume.id)}
+                      className={`inline-flex items-center space-x-1 text-xs transition cursor-pointer px-2 py-1 rounded ${
+                        isDark ? 'text-gray-400 hover:text-blue-300 hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'
+                      }`}
+                      title="预览详情"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>预览</span>
                     </button>
                   </div>
 
                   <button
                     onClick={() => handleLaunchMock(resume)}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs shadow-md shadow-purple-900/30 transition cursor-pointer"
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md shadow-blue-600/20 hover:shadow-blue-600/30 transition cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>以此发起模拟</span>
@@ -610,15 +676,23 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
       {/* 3. Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-xl rounded-2xl bg-gray-900 border border-gray-800 p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center space-x-2">
-                <Upload className="w-4 h-4 text-purple-400" />
+          <div className={`w-full max-w-xl rounded-2xl border p-6 space-y-5 shadow-2xl transition-colors ${
+            isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-3 ${
+              isDark ? 'border-gray-800' : 'border-gray-200'
+            }`}>
+              <h3 className={`text-base font-bold flex items-center space-x-2 ${
+                isDark ? 'text-white' : 'text-gray-900'
+              }`}>
+                <Upload className="w-4 h-4 text-blue-500" />
                 <span>录入新简历</span>
               </h3>
               <button
                 onClick={() => setShowUploadModal(false)}
-                className="p-1 rounded text-gray-400 hover:text-white"
+                className={`p-1 rounded transition ${
+                  isDark ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-700'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -628,7 +702,11 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
               {/* Option A: File Upload */}
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-700 hover:border-purple-500/80 rounded-xl p-6 text-center cursor-pointer transition bg-gray-950/40 hover:bg-purple-950/10 space-y-2 group"
+                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition space-y-2 group ${
+                  isDark
+                    ? 'border-gray-700 hover:border-blue-500/80 bg-gray-950/40 hover:bg-blue-950/10'
+                    : 'border-gray-300 hover:border-blue-500 bg-gray-50/70 hover:bg-blue-50/40'
+                }`}
               >
                 <input
                   ref={fileInputRef}
@@ -640,22 +718,30 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                     if (file) handleFileUpload(file);
                   }}
                 />
-                <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mx-auto group-hover:scale-110 transition">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mx-auto group-hover:scale-110 transition ${
+                  isDark
+                    ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400'
+                    : 'bg-blue-50 border border-blue-200 text-blue-600'
+                }`}>
                   <Upload className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="text-xs font-medium text-white group-hover:text-purple-300">
+                  <span className={`text-xs font-medium ${
+                    isDark ? 'text-white group-hover:text-blue-300' : 'text-gray-900 group-hover:text-blue-600'
+                  }`}>
                     点击选择简历文件或拖拽至此
                   </span>
-                  <p className="text-[11px] text-gray-400 mt-1">
+                  <p className={`text-[11px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                     支持 PDF、Word (.docx)、纯文本 (.txt)、Markdown (.md)
                   </p>
                 </div>
               </div>
 
               <div className="relative flex items-center justify-center">
-                <div className="border-t border-gray-800 w-full" />
-                <span className="bg-gray-900 px-3 text-[11px] text-gray-400 absolute">或者直接粘贴文本</span>
+                <div className={`border-t w-full ${isDark ? 'border-gray-800' : 'border-gray-200'}`} />
+                <span className={`px-3 text-[11px] absolute ${
+                  isDark ? 'bg-gray-900 text-gray-400' : 'bg-white text-gray-500'
+                }`}>或者直接粘贴文本</span>
               </div>
 
               {/* Option B: Direct Text Paste */}
@@ -665,19 +751,27 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   placeholder="简历标题 / 标识（例如：前端架构师版、校招简历）"
                   value={pastedTitle}
                   onChange={(e) => setPastedTitle(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                  className={`w-full text-xs px-3.5 py-2.5 rounded-lg border transition ${
+                    isDark
+                      ? 'bg-gray-950 border-gray-800 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'
+                      : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'
+                  }`}
                 />
                 <textarea
                   rows={6}
                   placeholder="在此粘贴你的简历 Markdown / 纯文本内容..."
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
-                  className="w-full text-xs p-3 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-none font-mono"
+                  className={`w-full text-xs p-3.5 rounded-lg border resize-none font-mono transition leading-relaxed ${
+                    isDark
+                      ? 'bg-gray-950 border-gray-800 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'
+                      : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'
+                  }`}
                 />
                 <button
                   onClick={handlePasteSubmit}
                   disabled={uploading || !pastedText.trim()}
-                  className="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium text-xs transition flex items-center justify-center space-x-2 cursor-pointer"
+                  className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium text-xs shadow-md shadow-blue-600/20 transition flex items-center justify-center space-x-2 cursor-pointer"
                 >
                   {uploading ? (
                     <>
@@ -700,14 +794,20 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
       {/* 4. Resume Detail & Preview Drawer/Modal */}
       {previewResume && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-3xl max-h-[85vh] rounded-2xl bg-gray-900 border border-gray-800 p-6 flex flex-col shadow-2xl">
+          <div className={`w-full max-w-3xl max-h-[85vh] rounded-2xl border p-6 flex flex-col shadow-2xl transition-colors ${
+            isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'
+          }`}>
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <FileText className="w-5 h-5 text-purple-400" />
-                <h3 className="text-base font-bold text-white">{previewResume.filename}</h3>
+            <div className={`flex items-center justify-between border-b pb-3 ${
+              isDark ? 'border-gray-800' : 'border-gray-200'
+            }`}>
+              <div className="flex items-center space-x-2 min-w-0">
+                <FileText className="w-5 h-5 text-blue-500 shrink-0" />
+                <h3 className={`text-base font-bold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {previewResume.filename}
+                </h3>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 shrink-0">
                 <button
                   onClick={() => {
                     const id = previewResume.id;
@@ -715,31 +815,45 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                     setPreviewResume(null);
                     openPolish(id, filename);
                   }}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-amber-500 text-gray-300 hover:text-amber-300 text-xs font-medium transition cursor-pointer"
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                    isDark
+                      ? 'border-gray-700 hover:border-amber-500 text-gray-300 hover:text-amber-300'
+                      : 'border-gray-300 hover:border-amber-500 text-gray-700 hover:text-amber-700 bg-white'
+                  }`}
                 >
-                  <Wand2 className="w-3.5 h-3.5" />
+                  <Wand2 className="w-3.5 h-3.5 text-amber-500" />
                   <span>AI 体检</span>
                 </button>
                 <button
-                  onClick={() => handleEdit(previewResume.id)}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 text-gray-300 hover:text-purple-300 text-xs font-medium transition cursor-pointer"
+                  onClick={() => {
+                    const id = previewResume.id;
+                    setPreviewResume(null);
+                    handleEdit(id);
+                  }}
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                    isDark
+                      ? 'border-gray-700 hover:border-blue-500 text-gray-300 hover:text-blue-300'
+                      : 'border-gray-300 hover:border-blue-500 text-gray-700 hover:text-blue-700 bg-white'
+                  }`}
                 >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span>编辑</span>
+                  <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                  <span>完善与编辑</span>
                 </button>
                 <button
                   onClick={() => {
                     onSelectResumeForMock(previewResume.raw_text, previewResume.filename);
                     setPreviewResume(null);
                   }}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition cursor-pointer"
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-md shadow-blue-600/20 transition cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>以此发起模拟</span>
                 </button>
                 <button
                   onClick={() => setPreviewResume(null)}
-                  className="p-1 rounded text-gray-400 hover:text-white"
+                  className={`p-1 rounded transition ${
+                    isDark ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-700'
+                  }`}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -750,8 +864,10 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
             <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
               {/* Profile summary if parsed */}
               {previewResume.parsed_profile && Object.keys(previewResume.parsed_profile).length > 0 && (
-                <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-3">
-                  <div className="text-xs font-bold text-purple-300 flex items-center space-x-1.5">
+                <div className={`p-4 rounded-xl border space-y-3 ${
+                  isDark ? 'bg-blue-950/20 border-blue-800/40' : 'bg-blue-50/50 border-blue-100'
+                }`}>
+                  <div className="text-xs font-bold text-blue-500 flex items-center space-x-1.5">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>AI 结构化解析画像</span>
                   </div>
@@ -760,16 +876,20 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                       {previewResume.parsed_profile.skills.map((s: string, idx: number) => (
                         <span
                           key={idx}
-                          className="px-2 py-0.5 rounded-md bg-purple-900/60 text-purple-200 border border-purple-700/50 text-[11px]"
+                          className={`px-2 py-0.5 rounded-md text-[11px] border ${
+                            isDark
+                              ? 'bg-blue-900/60 text-blue-200 border-blue-700/50'
+                              : 'bg-blue-100/70 text-blue-800 border-blue-200'
+                          }`}
                         >
                           {s}
                         </span>
                       ))}
                     </div>
                   )}
-                  {previewResume.parsed_profile.summary && (
-                    <p className="text-xs text-gray-300 leading-relaxed">
-                      {previewResume.parsed_profile.summary}
+                  {previewResume.parsed_profile.summary_profile && (
+                    <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {previewResume.parsed_profile.summary_profile}
                     </p>
                   )}
                 </div>
@@ -777,8 +897,14 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
 
               {/* Raw text */}
               <div className="space-y-1.5">
-                <div className="text-xs font-bold text-gray-300">简历原文内容：</div>
-                <div className="p-4 rounded-xl bg-gray-950 border border-gray-800 text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+                <div className={`text-xs font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  简历原文内容：
+                </div>
+                <div className={`p-4 rounded-xl border text-xs font-mono whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto ${
+                  isDark
+                    ? 'bg-gray-950 border-gray-800 text-gray-300'
+                    : 'bg-gray-50 border-gray-200 text-gray-800'
+                }`}>
                   {previewResume.raw_text}
                 </div>
               </div>
@@ -787,275 +913,19 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
         </div>
       )}
 
-      {/* 5. Edit Modal */}
-      {editingResume && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-3xl max-h-[85vh] rounded-2xl bg-gray-900 border border-gray-800 p-6 flex flex-col shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <Pencil className="w-5 h-5 text-purple-400" />
-                <h3 className="text-base font-bold text-white">编辑简历</h3>
-              </div>
-              <button
-                onClick={() => setEditingResume(null)}
-                className="p-1 rounded text-gray-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Form (scrollable) */}
-            <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
-              {editError && (
-                <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-700/60 text-red-300 text-xs flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                  <span>{editError}</span>
-                </div>
-              )}
-
-              {/* Filename */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-300">简历标题 / 文件名</label>
-                <input
-                  type="text"
-                  value={editingResume.filename}
-                  onChange={(e) => setEditingResume({ ...editingResume, filename: e.target.value })}
-                  className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                  placeholder="例如：前端架构师版"
-                />
-              </div>
-
-              {/* Raw text */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-300">
-                  简历原文 <span className="font-normal text-gray-500">（模拟面试将使用此内容）</span>
-                </label>
-                <textarea
-                  rows={8}
-                  value={editingResume.raw_text}
-                  onChange={(e) => setEditingResume({ ...editingResume, raw_text: e.target.value })}
-                  className="w-full text-xs p-3 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y font-mono leading-relaxed"
-                />
-              </div>
-
-              {/* Reparse toggle */}
-              <label className="flex items-center space-x-2 text-xs text-gray-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={editingResume.reparse}
-                  onChange={(e) => setEditingResume({ ...editingResume, reparse: e.target.checked })}
-                  className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-950 accent-purple-600 cursor-pointer"
-                />
-                <span>
-                  保存后重新进行 AI 智能解析
-                  <span className="text-gray-500">（以最新原文重新生成画像，覆盖下方手动内容）</span>
-                </span>
-              </label>
-
-              {/* Parsed profile editor */}
-              <div
-                className={`p-4 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-3 transition-opacity ${
-                  editingResume.reparse ? 'opacity-40 pointer-events-none' : ''
-                }`}
-              >
-                <div className="text-xs font-bold text-purple-300 flex items-center space-x-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>AI 解析画像（手动修正）</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-gray-400">姓名</label>
-                    <input
-                      type="text"
-                      value={editingResume.name}
-                      onChange={(e) => setEditingResume({ ...editingResume, name: e.target.value })}
-                      className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-gray-400">工作年限（年）</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editingResume.experience_years}
-                      onChange={(e) =>
-                        setEditingResume({ ...editingResume, experience_years: e.target.value })
-                      }
-                      className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-gray-400">技能（逗号或换行分隔）</label>
-                  <textarea
-                    rows={2}
-                    value={editingResume.skills}
-                    onChange={(e) => setEditingResume({ ...editingResume, skills: e.target.value })}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-gray-400">教育背景</label>
-                  <input
-                    type="text"
-                    value={editingResume.education}
-                    onChange={(e) => setEditingResume({ ...editingResume, education: e.target.value })}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-gray-400">个人总结</label>
-                  <textarea
-                    rows={2}
-                    value={editingResume.summary_profile}
-                    onChange={(e) =>
-                      setEditingResume({ ...editingResume, summary_profile: e.target.value })
-                    }
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y"
-                  />
-                </div>
-
-                {/* Projects */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] text-gray-400">项目经历</label>
-                    <button
-                      onClick={() =>
-                        setEditingResume({
-                          ...editingResume,
-                          projects: [
-                            ...editingResume.projects,
-                            { name: '', role: '', tech_stack: '', highlights: '' },
-                          ],
-                        })
-                      }
-                      className="inline-flex items-center space-x-1 text-[11px] text-purple-300 hover:text-purple-200 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>添加项目</span>
-                    </button>
-                  </div>
-                  {editingResume.projects.length === 0 && (
-                    <p className="text-[11px] text-gray-500 italic">暂无项目经历</p>
-                  )}
-                  {editingResume.projects.map((proj, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-lg bg-gray-950/60 border border-gray-800 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-gray-400">项目 {idx + 1}</span>
-                        <button
-                          onClick={() =>
-                            setEditingResume({
-                              ...editingResume,
-                              projects: editingResume.projects.filter((_, i) => i !== idx),
-                            })
-                          }
-                          title="移除该项目"
-                          className="text-gray-500 hover:text-red-400 transition cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          placeholder="项目名称"
-                          value={proj.name}
-                          onChange={(e) =>
-                            setEditingResume({
-                              ...editingResume,
-                              projects: editingResume.projects.map((p, i) =>
-                                i === idx ? { ...p, name: e.target.value } : p
-                              ),
-                            })
-                          }
-                          className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                        />
-                        <input
-                          type="text"
-                          placeholder="担任角色"
-                          value={proj.role}
-                          onChange={(e) =>
-                            setEditingResume({
-                              ...editingResume,
-                              projects: editingResume.projects.map((p, i) =>
-                                i === idx ? { ...p, role: e.target.value } : p
-                              ),
-                            })
-                          }
-                          className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                        />
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="技术栈（逗号分隔）"
-                        value={proj.tech_stack}
-                        onChange={(e) =>
-                          setEditingResume({
-                            ...editingResume,
-                            projects: editingResume.projects.map((p, i) =>
-                              i === idx ? { ...p, tech_stack: e.target.value } : p
-                            ),
-                          })
-                        }
-                        className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                      />
-                      <textarea
-                        rows={2}
-                        placeholder="项目亮点 / 成果"
-                        value={proj.highlights}
-                        onChange={(e) =>
-                          setEditingResume({
-                            ...editingResume,
-                            projects: editingResume.projects.map((p, i) =>
-                              i === idx ? { ...p, highlights: e.target.value } : p
-                            ),
-                          })
-                        }
-                        className="w-full text-xs px-3 py-2 rounded-lg bg-gray-950 border border-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 resize-y"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="pt-3 border-t border-gray-800 flex items-center justify-end space-x-3">
-              <button
-                onClick={() => setEditingResume(null)}
-                disabled={savingEdit}
-                className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-xs font-medium transition cursor-pointer disabled:opacity-50"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                disabled={savingEdit || !editingResume.filename.trim() || !editingResume.raw_text.trim()}
-                className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium text-xs transition cursor-pointer"
-              >
-                {savingEdit ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{editingResume.reparse ? 'AI 解析中...' : '保存中...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>保存修改</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* 5. Modern Dual-Column Resume Editor Modal */}
+      {editorResumeDetail && (
+        <ResumeEditorModal
+          initialData={editorResumeDetail}
+          open={Boolean(editorResumeDetail)}
+          onClose={() => {
+            setEditorResumeDetail(null);
+            setEditError(null);
+          }}
+          onSave={handleSaveEdit}
+          saving={savingEdit}
+          error={editError}
+        />
       )}
       {/* 6. AI Polish Modal */}
       {polishingResume && (

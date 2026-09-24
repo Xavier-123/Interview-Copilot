@@ -221,7 +221,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
   };
 
   const selectClass =
-    'flex-1 min-w-0 text-xs px-2 py-1.5 rounded-lg bg-gray-900 border border-gray-800 text-white focus:outline-none focus:border-emerald-500 cursor-pointer';
+    'flex-1 min-w-0 text-xs px-2 py-1.5 rounded-lg bg-surface border border-line-default text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer';
 
   return (
     <div className="w-full">
@@ -230,14 +230,18 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center justify-between gap-2 text-left text-xs px-3 py-2 rounded-lg bg-gray-950 border transition cursor-pointer ${
-          open ? 'border-emerald-500' : 'border-gray-800 hover:border-gray-700'
+        className={`w-full flex items-center justify-between gap-2 text-left text-xs px-3 py-2.5 rounded-xl bg-surface border transition cursor-pointer ${
+          open ? 'border-brand-primary' : 'border-line-subtle hover:border-line-default'
         }`}
       >
-        <span className={`truncate ${value ? 'text-white' : 'text-gray-500'}`}>
+        <span
+          className={`truncate ${
+            value ? 'text-content-primary' : 'text-content-placeholder'
+          }`}
+        >
           {value ? formatDisplay(value) : placeholder}
         </span>
-        <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <Calendar className="w-3.5 h-3.5 text-brand-primary shrink-0" />
       </button>
 
       {open &&
@@ -251,25 +255,25 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
               left: pos?.left ?? -9999,
               width: 312,
             }}
-            className="z-[60] picker-pop rounded-2xl bg-gray-950 border border-gray-800 shadow-2xl shadow-black/60 p-3 select-none"
+            className="z-[60] picker-pop rounded-2xl bg-surface-elevated border border-line-default shadow-popover p-3 select-none"
           >
             {/* 月份导航 */}
             <div className="flex items-center justify-between mb-2 px-0.5">
               <button
                 type="button"
                 onClick={() => shiftMonth(-1)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-content-secondary hover:text-content-primary hover:bg-surface-hover transition cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white">
+                <span className="text-sm font-bold text-content-primary">
                   {viewYear} 年 {viewMonth + 1} 月
                 </span>
                 <button
                   type="button"
                   onClick={jumpToThisMonth}
-                  className="text-[10px] px-1.5 py-0.5 rounded border border-gray-800 text-gray-400 hover:text-emerald-300 hover:border-emerald-600/60 transition cursor-pointer"
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-line-default text-content-secondary hover:text-brand-primary hover:border-brand-primary transition cursor-pointer"
                 >
                   本月
                 </button>
@@ -277,7 +281,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
               <button
                 type="button"
                 onClick={() => shiftMonth(1)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-content-secondary hover:text-content-primary hover:bg-surface-hover transition cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -286,7 +290,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
             {/* 星期表头（周一起始） */}
             <div className="grid grid-cols-7 mb-1">
               {WEEK_LABELS.map((w) => (
-                <div key={w} className="text-center text-[10px] font-semibold text-gray-500 py-1">
+                <div key={w} className="text-center text-[10px] font-semibold text-content-muted py-1">
                   {w}
                 </div>
               ))}
@@ -305,12 +309,12 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
                     className={[
                       'w-9 h-8 mx-auto rounded-lg text-xs flex items-center justify-center transition cursor-pointer',
                       selected
-                        ? 'bg-emerald-500 text-gray-950 font-bold shadow-md shadow-emerald-900/40'
+                        ? 'bg-brand-primary text-content-inverse font-bold shadow-card'
                         : today
-                          ? 'text-emerald-300 ring-1 ring-inset ring-emerald-500/50 hover:bg-gray-800'
+                          ? 'text-brand-primary ring-1 ring-inset ring-brand-primary/40 hover:bg-surface-hover'
                           : inMonth
-                            ? 'text-gray-300 hover:bg-gray-800'
-                            : 'text-gray-600 hover:bg-gray-800/60 hover:text-gray-400',
+                            ? 'text-content-secondary hover:bg-surface-hover'
+                            : 'text-content-disabled hover:bg-surface-hover hover:text-content-muted',
                     ].join(' ')}
                   >
                     {date.getDate()}
@@ -320,8 +324,8 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
             </div>
 
             {/* 时间选择 */}
-            <div className="mt-3 pt-3 border-t border-gray-800/80 flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <div className="mt-3 pt-3 border-t border-line-subtle flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5 text-brand-primary shrink-0" />
               <select
                 value={parsed?.hour ?? 14}
                 onChange={(e) => setTime(Number(e.target.value), parsed?.minute ?? 0)}
@@ -358,7 +362,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
                     onChange(p.value);
                     setOpen(false);
                   }}
-                  className="px-2.5 py-1 rounded-full border border-gray-800 bg-gray-900 text-[11px] text-gray-300 hover:text-emerald-300 hover:border-emerald-600/60 transition cursor-pointer"
+                  className="px-2.5 py-1 rounded-full border border-line-default bg-surface text-[11px] text-content-secondary hover:text-brand-primary hover:border-brand-primary transition cursor-pointer"
                 >
                   {p.label}
                 </button>
@@ -366,14 +370,14 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
             </div>
 
             {/* 底部：实时预览 + 确认 */}
-            <div className="mt-3 pt-3 border-t border-gray-800/80 flex items-center justify-between gap-3">
-              <span className="text-[11px] text-gray-400 truncate">
+            <div className="mt-3 pt-3 border-t border-line-subtle flex items-center justify-between gap-3">
+              <span className="text-[11px] text-content-secondary truncate">
                 {value ? formatDisplay(value) : '尚未选择时间'}
               </span>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition cursor-pointer shrink-0"
+                className="px-4 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-hover text-white text-xs font-medium transition cursor-pointer shrink-0"
               >
                 确定
               </button>

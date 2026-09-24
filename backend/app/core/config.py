@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # LLM Settings (OpenAI / DeepSeek / Qwen / Moonshot compatible)
-    LLM_API_KEY: str = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", "mock-key"))
+    # 必须配置真实密钥；留空时模型调用会直接报错，不再降级为示例数据。
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
     LLM_BASE_URL: Optional[str] = os.getenv("LLM_BASE_URL", os.getenv("OPENAI_BASE_URL", None))
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o")
     LLM_TEMPERATURE: float = 0.7
@@ -28,6 +29,9 @@ class Settings(BaseSettings):
 
     # Uploads
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
+
+    # Personas（自建面试官）：每个角色一个独立 JSON 文件
+    PERSONA_DATA_DIR: str = os.getenv("PERSONA_DATA_DIR", "./data/personas")
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
     MAX_TEXT_BYTES: int = 100 * 1024
     MAX_ANSWER_BYTES: int = 20 * 1024
@@ -35,7 +39,9 @@ class Settings(BaseSettings):
     # Security & CORS
     CORS_ORIGINS: list[str] = ["*"]
 
-    # Debug / Mock Mode
-    ENABLE_MOCK_MODE: bool = os.getenv("ENABLE_MOCK_MODE", "false").lower() in ("true", "1")
+    @property
+    def llm_configured(self) -> bool:
+        """服务端是否配置了可用的模型密钥（占位值视为未配置）。"""
+        return str(self.LLM_API_KEY or "").strip() not in ("", "mock-key", "your_api_key_here")
 
 settings = Settings()

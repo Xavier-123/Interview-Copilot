@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
+from app.agents.llm import LLMError
 from app.models.db import init_db
 from app.api.v1.interviews import router as interviews_router
 from app.api.v1.profiles import router as profiles_router
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Auto-initialize SQLite database tables on startup
     await init_db()
+    # 自建面试官历史数据迁移：数据库 interviewer_personas 表 → JSON 文件（幂等）
+    from app.services.persona_store import persona_store
+    await persona_store.migrate_from_database()
     # 启动临近面试邮件提醒定时后台轮询 Worker
     reminder_task = asyncio.create_task(reminder_scheduler_loop(interval_seconds=60))
     # 启动未满 3 轮废弃会话自动清理定时后台 Worker (默认每小时巡检，保护 60 分钟内活跃会话)
@@ -50,6 +54,16 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
 )
+
+
+@app.exception_handler(LLMError)
+async def llm_error_handler(request: Request, exc: LLMError):
+    """模型链路失败：直接返回可读原因，不再伪装成笼统的 500。"""
+    logger.error("LLM error path=%s: %s", request.url.path, exc.public_message)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": exc.public_message, "error": "llm_unavailable"},
+    )
 
 
 @app.exception_handler(Exception)
@@ -88,7 +102,7 @@ async def health_check():
         "status": "healthy",
         "project": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "mock_mode": settings.ENABLE_MOCK_MODE
+        "llm_configured": settings.llm_configured
     }
 
 if __name__ == "__main__":

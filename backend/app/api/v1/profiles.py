@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.parser import parser_service
 from app.services.resume_polish import resume_polish_service
+from app.agents.llm import LLMError
 from app.models.db import get_db
 from app.models.resume import SavedResume
 from app.core.config import settings
@@ -68,6 +69,8 @@ async def parse_resume_endpoint(req: ParseResumeRequest):
     try:
         profile = await parser_service.parse_resume(req.resume_text)
         return {"status": "success", "profile": profile}
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -77,6 +80,8 @@ async def parse_jd_endpoint(req: ParseJDRequest):
     try:
         requirements = await parser_service.parse_jd(req.jd_text)
         return {"status": "success", "requirements": requirements}
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="服务暂时不可用")
 
@@ -128,6 +133,8 @@ async def upload_resume_file(
         }
     except HTTPException:
         raise
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="文件处理失败，请稍后重试")
 
@@ -147,6 +154,8 @@ async def polish_resume(
             jd_text=payload.jd_text,
             target_role=payload.target_role,
         )
+    except LLMError:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="AI 分析暂时不可用，请稍后重试")
     return {"status": "success", "report": report}
@@ -175,7 +184,7 @@ async def apply_resume_polish(
         id=str(uuid.uuid4()),
         filename=_polished_filename(resume.filename, payload.target_role),
         raw_text=new_text,
-        # 以优化后的原文重新生成画像（parse_resume 内部有失败兜底）
+        # 以优化后的原文重新生成画像（模型不可用时会抛错，不会写入示例画像）
         parsed_profile=await parser_service.parse_resume(new_text),
         source_resume_id=resume.id,
     )
@@ -227,7 +236,7 @@ async def update_saved_resume(
         resume.raw_text = raw_text
 
     if payload.reparse:
-        # 用最新原文重新 AI 解析并覆盖画像（parse_resume 内部有失败兜底，不会抛出）
+        # 用最新原文重新 AI 解析并覆盖画像；模型不可用时抛错，由全局处理器返回可读原因
         resume.parsed_profile = await parser_service.parse_resume(resume.raw_text)
     elif payload.parsed_profile is not None:
         resume.parsed_profile = payload.parsed_profile

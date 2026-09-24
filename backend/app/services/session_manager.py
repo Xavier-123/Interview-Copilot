@@ -11,7 +11,6 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.models.db import AsyncSessionLocal
 from app.models.interview import InterviewSessionModel, InterviewMessageModel, InterviewReportModel, InterviewPromptLogModel
 from app.models.architecture import EvolutionCandidateModel, EvidenceItemModel
-from app.models.persona import InterviewerPersona
 from app.agents.state import InterviewState
 from app.agents.graph import interview_app
 from app.agents.evaluator import generate_evaluation_report
@@ -19,6 +18,7 @@ from app.agents.persona_node import PERSONA_KEY_PREFIX, PERSONA_REF_PREFIX
 from app.agents.prompts import SIMULATE_ANSWER_PROMPT
 from app.agents.llm import llm_service
 from app.services.parser import parser_service
+from app.services.persona_store import persona_store, persona_to_snapshot
 from app.services.search import search_service
 from app.services.scenario_service import scenario_service
 from app.services.audit import audit_service
@@ -75,6 +75,8 @@ _TURN_TRACKED_FIELDS = (
     "evidence_refs",
     "evidence_turn_ids",
     "next_node",
+    "current_code",
+    "code_language",
 )
 
 # 保留的快照数量（支持连续多次 redo），随 interview_state 一起持久化
@@ -307,32 +309,11 @@ class SessionManager:
 
         if persona_id_set:
             try:
-                async with AsyncSessionLocal() as db:
-                    result = await db.execute(
-                        select(InterviewerPersona).where(
-                            InterviewerPersona.id.in_(persona_id_set),
-                            InterviewerPersona.enabled == True,  # noqa: E712
-                        )
-                    )
-                    for p in result.scalars().all():
-                        snapshots[p.id] = {
-                            "id": p.id,
-                            "key": p.key,
-                            "name": p.name,
-                            "avatar": p.avatar or "🎭",
-                            "description": p.description or "",
-                            "system_prompt": p.system_prompt,
-                            "focus_topics": p.focus_topics or [],
-                            "opening_hint": p.opening_hint or "",
-                            "deep_dive_hint": p.deep_dive_hint or "",
-                            "probe_hint": p.probe_hint or "",
-                            "switch_hint": p.switch_hint or "",
-                            "school_of_thought": getattr(p, "school_of_thought", "standard") or "standard",
-                            "dislikes": getattr(p, "dislikes", []) or [],
-                            "preferences": getattr(p, "preferences", []) or [],
-                            "skepticism_level": float(getattr(p, "skepticism_level", 0.5) or 0.5),
-                            "interaction_traits": getattr(p, "interaction_traits", {}) or {},
-                        }
+                enabled_personas = await persona_store.get_by_ids(
+                    persona_id_set, enabled_only=True
+                )
+                for p in enabled_personas:
+                    snapshots[p.id] = persona_to_snapshot(p)
             except Exception as e:
                 logger.error(f"Failed to load persona snapshots for session: {e}")
 
@@ -381,19 +362,23 @@ class SessionManager:
         self,
         session_id: str,
         user_message: str,
+        code: Optional[str] = None,
+        code_language: Optional[str] = None,
         search_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         # REST and WebSocket can target the same session concurrently. Serialize
         # the full read -> graph invoke -> persist sequence per session.
         async with self._turn_lock(session_id):
             return await self._submit_candidate_answer_unlocked(
-                session_id, user_message, search_config
+                session_id, user_message, code=code, code_language=code_language, search_config=search_config
             )
 
     async def _submit_candidate_answer_unlocked(
         self,
         session_id: str,
         user_message: str,
+        code: Optional[str] = None,
+        code_language: Optional[str] = None,
         search_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         state = await self._ensure_state(session_id)
@@ -406,16 +391,30 @@ class SessionManager:
         snapshots.append(snapshot)
         snapshots = snapshots[-MAX_TURN_SNAPSHOTS:]
 
+        # 保存并更新代码与语言
+        if code is not None:
+            state["current_code"] = code
+        if code_language is not None:
+            state["code_language"] = code_language
+
         # Record candidate answer
-        user_msg = {
+        user_msg: Dict[str, Any] = {
             "role": "user",
             "name": "candidate",
             "content": user_message,
             "stage": state.get("stage"),
             "timestamp": datetime.now().isoformat()
         }
+        if code:
+            user_msg["code"] = code
+            user_msg["code_language"] = code_language or state.get("code_language", "python")
 
-        state["latest_user_input"] = user_message
+        full_user_input = user_message
+        if code and f"```{code_language or ''}" not in user_message:
+            lang_label = code_language or state.get("code_language", "python")
+            full_user_input = f"{user_message}\n\n```{lang_label}\n{code}\n```"
+
+        state["latest_user_input"] = full_user_input
         state["turn_id"] = str(uuid.uuid4())
         state["trace_id"] = str(uuid.uuid4())
         state["messages"] = state.get("messages", []) + [user_msg]
@@ -681,9 +680,11 @@ class SessionManager:
             state = await self._ensure_state(session_id)
             if not state:
                 raise ValueError(f"Session {session_id} not found")
-            state["status"] = "finished"
             runtime_state = self._runtime_state(session_id, state)
+            # 先生成报告：模型不可用会在这里抛错，此时不应把会话标记为已结束，
+            # 否则用户重试时拿不到可重入的状态。
             report = await generate_evaluation_report(runtime_state)
+            state["status"] = "finished"
             if report.get("prompt_logs"):
                 state["prompt_logs"] = list(state.get("prompt_logs") or []) + report["prompt_logs"]
 

@@ -5,7 +5,7 @@ from typing import Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import InterviewState
 from app.agents.prompts import SHADOW_OBSERVER_PROMPT
-from app.agents.llm import llm_service
+from app.agents.llm import llm_service, LLMResponseError
 from app.services.prompt_recorder import prompt_recorder
 
 logger = logging.getLogger(__name__)
@@ -105,39 +105,31 @@ async def shadow_observer_node(state: InterviewState) -> dict:
 
     resp_raw = ""
     parsed_data = None
-    # 解析失败时带纠正提示重试一次，避免模板兜底数据静默流入评分链路
+    # 解析失败时带纠正提示重试一次；仍失败直接抛错，不注入模板观察数据污染评分链路
     for attempt, extra in enumerate(("", "\n【重要】你上一次的输出无法解析为合法 JSON。请重新输出，必须是单一 ```json 代码块，块外无任何文字，块内无注释与省略号，所有字段完整。")):
-        try:
-            resp = await llm_service.invoke(
-                [SystemMessage(content=sys_msg + extra), HumanMessage(content=prompt)],
-                llm_config=state.get("llm_config")
-            )
-            resp_raw = resp.content
-            content = resp.content.strip()
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+        resp = await llm_service.invoke(
+            [SystemMessage(content=sys_msg + extra), HumanMessage(content=prompt)],
+            llm_config=state.get("llm_config")
+        )
+        resp_raw = resp.content
+        content = resp.content.strip()
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
 
+        try:
             parsed_data = json.loads(content)
-            break
-        except Exception as e:
+        except json.JSONDecodeError as e:
             if attempt == 0:
                 logger.warning(f"Shadow observer parsing failed, retrying once: {e}")
                 continue
-            logger.warning(f"Shadow observer parsing failed after retry: {e}. Generating fallback observation.")
-            parsed_data = {
-                "topic": current_topic or "核心系统实践与架构方案",
-                "satisfaction_score": 0.78,
-                "strengths": ["思路清晰，对业务场景有明确认识"],
-                "weaknesses": ["回答中量化数据和极端边界兜底阐述偏少"],
-                "follow_up_hint": "针对方案在极端并发或网络抖动下的容灾边界进行深挖",
-                "key_claim": f"候选人陈述了关于'{current_topic or '系统方案'}'的实现思路",
-                "depth_score": 7.5,
-                "logic_score": 7.5,
-                "star_compliance": 7.0,
-                "flags": ["standard_response"]
-            }
+            logger.error(f"Shadow observer parsing failed after retry: {e}")
+            raise LLMResponseError("模型返回的观察记录不是合法 JSON，请重试本轮。") from e
+
+        if not isinstance(parsed_data, dict):
+            raise LLMResponseError("模型返回的观察记录格式不正确，请重试本轮。")
+        break
 
     # Extract score
     raw_score = parsed_data.get("satisfaction_score")

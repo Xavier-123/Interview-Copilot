@@ -135,6 +135,8 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   name?: string; // 内置角色 key 或自定义人设 key（persona_xxxx）
   content: string;
+  code?: string;
+  code_language?: string;
   stage?: string;
   timestamp?: string;
   search_metadata?: SearchMetadata;
@@ -164,6 +166,8 @@ export interface TranscriptMessage {
   role: 'user' | 'assistant' | 'system';
   name?: string;
   content: string;
+  code?: string;
+  code_language?: string;
   stage?: string;
   timestamp?: string;
   search_metadata?: SearchMetadata;

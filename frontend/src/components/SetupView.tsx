@@ -119,6 +119,10 @@ const SAMPLE_JDS: Record<string, string> = {
 2. 具备优秀的大局观、跨部门协同推进能力与技术战略眼光。`,
 };
 
+/** 「使用示例」填充按钮的统一样式（带边框以确保可识别为可点击操作） */
+const SAMPLE_CHIP_CLASS =
+  'text-[11px] px-2 py-1 rounded-lg border border-line-default bg-surface-subtle text-content-secondary hover:border-blue-400 hover:text-blue-500 dark:hover:text-blue-400 transition';
+
 const PRESET_ROLES: Record<IndustryType, string[]> = {
   '互联网/电商': ['资深后端开发', '高并发架构师', '前端架构师', '大数据平台开发', '研发效能/DevOps专家'],
   '人工智能/大模型': ['大模型算法工程师', '大模型应用/Agent开发专家', '算法工程/RAG专家', 'AI基础设施/算力调度', '推荐算法工程师'],
@@ -160,56 +164,56 @@ const INTERVIEW_TYPE_OPTIONS: Array<{
     title: '结构化全流程面试',
     subtitle: '破冰 -> 深度技术 -> STAR行为 -> 极端挑战 -> 反问',
     icon: Layers,
-    color: 'border-blue-500/50 bg-blue-950/20 text-blue-300',
+    color: 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/50 dark:bg-blue-950/20 dark:text-blue-300',
   },
   {
     type: 'technical',
     title: '专业技术深度面',
     subtitle: '技术栈与高并发架构、底层源码、一致性权衡',
     icon: Code2,
-    color: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-300',
+    color: 'border-cyan-200 bg-cyan-50 text-cyan-600 dark:border-cyan-500/50 dark:bg-cyan-950/20 dark:text-cyan-300',
   },
   {
     type: 'programmer',
     title: '程序员综合面',
     subtitle: '项目经历 + 计算机基础轮转 + 代码题，经典大厂一二面完整流程',
     icon: Terminal,
-    color: 'border-orange-500/50 bg-orange-950/20 text-orange-300',
+    color: 'border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-500/50 dark:bg-orange-950/20 dark:text-orange-300',
   },
   {
     type: 'behavioral',
     title: 'STAR 行为面试',
     subtitle: '情境/任务/行动/结果，团队沟通与复杂冲突',
     icon: Users,
-    color: 'border-purple-500/50 bg-purple-950/20 text-purple-300',
+    color: 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-500/50 dark:bg-purple-950/20 dark:text-purple-300',
   },
   {
     type: 'hr',
     title: 'HR 综合素养面',
     subtitle: '职业规划、稳定性、离职原因与企业文化契合',
     icon: Users,
-    color: 'border-pink-500/50 bg-pink-950/20 text-pink-300',
+    color: 'border-pink-200 bg-pink-50 text-pink-600 dark:border-pink-500/50 dark:bg-pink-950/20 dark:text-pink-300',
   },
   {
     type: 'management',
     title: '管理岗 / 技术总监面',
     subtitle: '团队梯队建设、技术战略、技术债务、研发效能',
     icon: Briefcase,
-    color: 'border-amber-500/50 bg-amber-950/20 text-amber-300',
+    color: 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/50 dark:bg-amber-950/20 dark:text-amber-300',
   },
   {
     type: 'english',
     title: '全球英语面试',
     subtitle: '100% English Global Mock, FAANG style',
     icon: Globe,
-    color: 'border-emerald-500/50 bg-emerald-950/20 text-emerald-300',
+    color: 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/50 dark:bg-emerald-950/20 dark:text-emerald-300',
   },
   {
     type: 'custom',
     title: '自选定制面试',
     subtitle: '自由勾选面试官阵容，指定考查方向',
     icon: Sliders,
-    color: 'border-indigo-500/50 bg-indigo-950/20 text-indigo-300',
+    color: 'border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-500/50 dark:bg-indigo-950/20 dark:text-indigo-300',
   },
 ];
 
@@ -221,8 +225,10 @@ export const SetupView: React.FC<SetupViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // States
-  const [resumeText, setResumeText] = useState(SAMPLE_RESUMES.backend);
-  const [jdText, setJdText] = useState(SAMPLE_JDS.backend);
+  // 简历 / JD 默认留空：内置示例文本会被后端真实解析，若作为初值会让用户误以为
+  // 系统写死了候选人画像。改为由用户显式点击「使用示例」填入。
+  const [resumeText, setResumeText] = useState('');
+  const [jdText, setJdText] = useState('');
   const [industry, setIndustry] = useState<IndustryType>('人工智能/大模型');
   const [jobRole, setJobRole] = useState('大模型算法工程师');
   const [seniority, setSeniority] = useState<SeniorityLevel>('senior');
@@ -340,6 +346,15 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // 简历/JD 默认已留空，这里显式校验，避免依赖浏览器原生的 required 气泡提示
+    if (!resumeText.trim()) {
+      alert('请先填写候选人简历，或点击「使用示例」快速填入一份示例简历。');
+      return;
+    }
+    if (!jdText.trim()) {
+      alert('请先填写目标岗位描述（JD），或点击「使用示例」快速填入一份示例 JD。');
+      return;
+    }
     onStartInterview({
       resumeText,
       jdText,
@@ -379,24 +394,24 @@ export const SetupView: React.FC<SetupViewProps> = ({
     <div className="max-w-6xl mx-auto py-8 px-4">
       {/* Header */}
       <div className="text-center max-w-3xl mx-auto mb-8">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-900/30 border border-blue-700/40 text-blue-400 text-xs font-medium mb-3">
+        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-700/40 dark:text-blue-400 text-xs font-medium mb-3">
           <Sparkles className="w-3.5 h-3.5" />
           <span>智能模拟面试系统</span>
         </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">
+        <h1 className="text-3xl font-extrabold text-content-primary tracking-tight sm:text-4xl">
           配置你的多 Agent 模拟面试
         </h1>
-        <p className="mt-3 text-sm text-gray-400 leading-relaxed">
+        <p className="mt-3 text-sm text-content-secondary leading-relaxed">
           支持上传真实简历文件、挑选行业与细分岗位、任选 7 大面试类型与多模态交互，全周期生成诊断报告与 7 天冲刺计划。
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Step 1: Choose Interview Type */}
-        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-6">
+        <div className="bg-surface border border-line-subtle rounded-3xl p-6 shadow-sm">
           <div className="flex items-center space-x-2 mb-4">
             <Layers className="w-4 h-4 text-blue-400" />
-            <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-content-primary">
               步骤 1：选择面试类型 (Interview Type)
             </h3>
           </div>
@@ -411,8 +426,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
                   onClick={() => setInterviewType(item.type)}
                   className={`cursor-pointer rounded-2xl p-4 border transition-all relative overflow-hidden flex flex-col justify-between ${
                     isSelected
-                      ? `bg-gray-800/90 border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/10`
-                      : 'bg-gray-950/60 border-gray-800/80 hover:border-gray-700'
+                      ? `bg-brand-subtle border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/10`
+                      : 'bg-surface-subtle border-line-subtle hover:border-line-default'
                   }`}
                 >
                   <div className="flex items-start space-x-3 mb-2">
@@ -422,15 +437,15 @@ export const SetupView: React.FC<SetupViewProps> = ({
                       <Icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-gray-100">{item.title}</div>
-                      <div className="text-[11px] text-gray-400 mt-1 leading-snug">
+                      <div className="text-xs font-bold text-content-primary">{item.title}</div>
+                      <div className="text-[11px] text-content-secondary mt-1 leading-snug">
                         {item.subtitle}
                       </div>
                     </div>
                   </div>
                   {isSelected && (
-                    <div className="self-end mt-1 text-[10px] font-semibold text-blue-400 flex items-center space-x-1">
-                      <CheckCircle className="w-3.5 h-3.5 text-blue-400" />
+                    <div className="self-end mt-1 text-[10px] font-semibold text-brand-primary flex items-center space-x-1">
+                      <CheckCircle className="w-3.5 h-3.5 text-brand-primary" />
                       <span>已选定</span>
                     </div>
                   )}
@@ -441,14 +456,14 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
           {/* Custom Interview Configuration Panel */}
           {interviewType === 'custom' && (
-            <div className="mt-4 p-4 rounded-2xl bg-gray-950/80 border border-indigo-500/40 space-y-3 animate-fadeIn">
-              <div className="text-xs font-semibold text-indigo-300 flex items-center space-x-2">
+            <div className="mt-4 p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200 dark:bg-gray-950/80 dark:border-indigo-500/40 space-y-3 animate-fadeIn">
+              <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 flex items-center space-x-2">
                 <Sliders className="w-3.5 h-3.5" />
                 <span>自定义面试阵容与考察重心</span>
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">
+                  <label className="block text-xs text-content-secondary mb-1.5">
                     指定出场面试官 (可多选，按选择顺序出场)
                   </label>
                   <div className="flex flex-wrap gap-2">
@@ -480,8 +495,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
                           }}
                           className={`text-xs px-3 py-1.5 rounded-lg border transition ${
                             active
-                              ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200'
-                              : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200'
+                              ? 'bg-indigo-100 border-indigo-400 text-indigo-700 dark:bg-indigo-600/30 dark:border-indigo-500 dark:text-indigo-200'
+                              : 'bg-surface-subtle border-line-default text-content-secondary hover:text-content-primary'
                           }`}
                         >
                           {role.label}
@@ -493,8 +508,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
                 {myPersonas.length > 0 && (
                   <div>
-                    <label className="block text-xs text-gray-400 mb-1.5">
-                      <span className="text-violet-300 font-medium">我的角色</span>
+                    <label className="block text-xs text-content-secondary mb-1.5">
+                      <span className="text-violet-600 dark:text-violet-300 font-medium">我的角色</span>
                       （来自角色库）
                     </label>
                     <div className="flex flex-wrap gap-2">
@@ -522,8 +537,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
                             }}
                             className={`flex items-center space-x-1 text-xs px-3 py-1.5 rounded-lg border transition ${
                               active
-                                ? 'bg-violet-600/30 border-violet-500 text-violet-200'
-                                : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200'
+                                ? 'bg-violet-100 border-violet-400 text-violet-700 dark:bg-violet-600/30 dark:border-violet-500 dark:text-violet-200'
+                                : 'bg-surface-subtle border-line-default text-content-secondary hover:text-content-primary'
                             }`}
                           >
                             <span>{p.avatar || '🎭'}</span>
@@ -552,12 +567,12 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     )[entry] || entry;
                   };
                   return (
-                    <div className="text-[11px] text-gray-500 bg-gray-900/60 border border-gray-800 rounded-lg px-3 py-2">
-                      <span className="text-gray-400">出场顺序：</span>
+                    <div className="text-[11px] text-content-muted bg-surface-subtle border border-line-subtle rounded-lg px-3 py-2">
+                      <span className="text-content-secondary">出场顺序：</span>
                       {customSelectedInterviewers.map((entry, i) => (
                         <span key={entry}>
-                          {i > 0 && <span className="text-gray-600"> → </span>}
-                          <span className="text-gray-300">{i + 1}. {resolveLabel(entry)}</span>
+                          {i > 0 && <span className="text-content-placeholder"> → </span>}
+                          <span className="text-content-secondary">{i + 1}. {resolveLabel(entry)}</span>
                         </span>
                       ))}
                     </div>
@@ -565,15 +580,15 @@ export const SetupView: React.FC<SetupViewProps> = ({
                 })()}
 
                 {myPersonas.length === 0 && (
-                  <div className="text-[11px] text-gray-500">
+                  <div className="text-[11px] text-content-muted">
                     💡 想加入自设计的面试官？点击顶部
-                    <span className="text-violet-300">「角色库」</span>
+                    <span className="text-violet-600 dark:text-violet-300">「角色库」</span>
                     创建你的专属角色。
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">
+                  <label className="block text-xs text-content-secondary mb-1">
                     定向考察知识点 (逗号分隔)
                   </label>
                   <input
@@ -581,7 +596,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     value={customFocusTopics}
                     onChange={(e) => setCustomFocusTopics(e.target.value)}
                     placeholder="选填，如：Redis分布式锁, Kafka事务（留空则默认按所选面试官自身重点考察）"
-                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-surface-subtle border border-line-default rounded-xl py-2 px-3 text-xs text-content-primary placeholder-content-placeholder focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
@@ -590,10 +605,10 @@ export const SetupView: React.FC<SetupViewProps> = ({
         </div>
 
         {/* Step 2: Industry, Role, Seniority, Difficulty */}
-        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-6">
+        <div className="bg-surface border border-line-subtle rounded-3xl p-6 shadow-sm">
           <div className="flex items-center space-x-2 mb-4">
             <Briefcase className="w-4 h-4 text-indigo-400" />
-            <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-content-primary">
               步骤 2：选择行业、岗位、职级与难度
             </h3>
           </div>
@@ -601,7 +616,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Industry */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">目标行业</label>
+              <label className="block text-xs text-content-secondary mb-1.5 font-medium">目标行业</label>
               <select
                 value={industry}
                 onChange={(e) => {
@@ -611,7 +626,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     setJobRole(PRESET_ROLES[newInd][0]);
                   }
                 }}
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-2 text-xs text-content-primary focus:outline-none focus:border-blue-500"
               >
                 {INDUSTRY_OPTIONS.map((ind) => (
                   <option key={ind} value={ind}>
@@ -623,7 +638,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
             {/* Role */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">
+              <label className="block text-xs text-content-secondary mb-1.5 font-medium">
                 求职岗位 (支持自定义)
               </label>
               <div className="relative">
@@ -632,7 +647,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                   value={jobRole}
                   onChange={(e) => setJobRole(e.target.value)}
                   placeholder="例如：后端开发架构师"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-2 text-xs text-content-primary focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
@@ -641,7 +656,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     key={r}
                     type="button"
                     onClick={() => setJobRole(r)}
-                    className="text-[10px] text-gray-400 hover:text-blue-300 underline"
+                    className="text-[10px] text-content-secondary hover:text-blue-500 dark:hover:text-blue-300 underline"
                   >
                     {r}
                   </button>
@@ -651,11 +666,11 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
             {/* Seniority */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">考核职级</label>
+              <label className="block text-xs text-content-secondary mb-1.5 font-medium">考核职级</label>
               <select
                 value={seniority}
                 onChange={(e) => setSeniority(e.target.value as SeniorityLevel)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-2 text-xs text-content-primary focus:outline-none focus:border-blue-500"
               >
                 <option value="intern">校招新人 / 实习生 (夯实基础与语法规范)</option>
                 <option value="junior">初级工程师 (1-3年，注重项目实操与排错)</option>
@@ -667,11 +682,11 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
             {/* Difficulty */}
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">面试难度</label>
+              <label className="block text-xs text-content-secondary mb-1.5 font-medium">面试难度</label>
               <select
                 value={difficulty}
                 onChange={(e) => setDifficulty(e.target.value as DifficultyLevel)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-2 text-xs text-content-primary focus:outline-none focus:border-blue-500"
               >
                 <option value="easy">基础巩固 (侧重基础语法与常规场景)</option>
                 <option value="standard">标准大厂 (真实业务复杂系统设计与场景追问)</option>
@@ -682,10 +697,10 @@ export const SetupView: React.FC<SetupViewProps> = ({
         </div>
 
         {/* Step 3: Interview Rounds & Decision Mode */}
-        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-6">
+        <div className="bg-surface border border-line-subtle rounded-3xl p-6 shadow-sm">
           <div className="flex items-center space-x-2 mb-4">
             <Sliders className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-content-primary">
               步骤 3：设定考核轮次与决策方式
             </h3>
           </div>
@@ -697,23 +712,23 @@ export const SetupView: React.FC<SetupViewProps> = ({
               onClick={() => setRoundsMode('fixed')}
               className={`flex items-start p-3.5 rounded-2xl border text-left transition-all ${
                 roundsMode === 'fixed'
-                  ? 'bg-indigo-950/40 border-indigo-500/70 shadow-lg shadow-indigo-950/30'
-                  : 'bg-gray-950/60 border-gray-800 hover:border-gray-700'
+                  ? 'bg-indigo-50 border-indigo-400 shadow-lg shadow-indigo-500/10 dark:bg-indigo-950/40 dark:border-indigo-500/70 dark:shadow-indigo-950/30'
+                  : 'bg-surface-subtle border-line-subtle hover:border-line-default'
               }`}
             >
               <div className="mr-3 mt-0.5 text-base">🎯</div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className={`text-xs font-semibold ${roundsMode === 'fixed' ? 'text-indigo-300' : 'text-gray-200'}`}>
+                  <span className={`text-xs font-semibold ${roundsMode === 'fixed' ? 'text-indigo-600 dark:text-indigo-300' : 'text-content-primary'}`}>
                     显式指定轮次 (固定轮次)
                   </span>
                   {roundsMode === 'fixed' && (
-                    <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full border border-indigo-500/30">
+                    <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full border border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30">
                       已启用
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-content-secondary mt-1">
                   设定固定的专业考核题数，由面试官严格按轮次深入考察后转入反问。
                 </p>
               </div>
@@ -724,23 +739,23 @@ export const SetupView: React.FC<SetupViewProps> = ({
               onClick={() => setRoundsMode('adaptive')}
               className={`flex items-start p-3.5 rounded-2xl border text-left transition-all ${
                 roundsMode === 'adaptive'
-                  ? 'bg-emerald-950/40 border-emerald-500/70 shadow-lg shadow-emerald-950/30'
-                  : 'bg-gray-950/60 border-gray-800 hover:border-gray-700'
+                  ? 'bg-emerald-50 border-emerald-400 shadow-lg shadow-emerald-500/10 dark:bg-emerald-950/40 dark:border-emerald-500/70 dark:shadow-emerald-950/30'
+                  : 'bg-surface-subtle border-line-subtle hover:border-line-default'
               }`}
             >
               <div className="mr-3 mt-0.5 text-base">✨</div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className={`text-xs font-semibold ${roundsMode === 'adaptive' ? 'text-emerald-300' : 'text-gray-200'}`}>
+                  <span className={`text-xs font-semibold ${roundsMode === 'adaptive' ? 'text-emerald-600 dark:text-emerald-300' : 'text-content-primary'}`}>
                     大模型自主研判 (AI 动态深度)
                   </span>
                   {roundsMode === 'adaptive' && (
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-500/30">
+                    <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30">
                       智能推荐
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-content-secondary mt-1">
                   影子观察员后台评估回答饱和度与考点覆盖（最少 3 题），画像充分即智能收尾。
                 </p>
               </div>
@@ -749,11 +764,11 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
           {/* Mode-specific Controls */}
           {roundsMode === 'fixed' ? (
-            <div className="bg-gray-950/50 border border-gray-800/80 rounded-2xl p-4">
+            <div className="bg-surface-subtle border border-line-subtle rounded-2xl p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-300 font-medium">核心考核题数：</span>
-                  <span className="text-sm font-bold text-indigo-400 bg-indigo-950/50 px-2.5 py-0.5 rounded-lg border border-indigo-800/40">
+                  <span className="text-xs text-content-secondary font-medium">核心考核题数：</span>
+                  <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800/40">
                     {fixedQuestionCount} 题
                   </span>
                 </div>
@@ -773,7 +788,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                       className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
                         fixedQuestionCount === preset.value
                           ? 'bg-indigo-600 text-white border-indigo-500'
-                          : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-700'
+                          : 'bg-surface-subtle border-line-default text-content-secondary hover:text-content-primary hover:border-line-focus'
                       }`}
                     >
                       {preset.label}
@@ -783,7 +798,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
               </div>
 
               <div className="flex items-center space-x-3">
-                <span className="text-[11px] text-gray-500">2题</span>
+                <span className="text-[11px] text-content-muted">2题</span>
                 <input
                   type="range"
                   min={2}
@@ -791,21 +806,21 @@ export const SetupView: React.FC<SetupViewProps> = ({
                   step={1}
                   value={fixedQuestionCount}
                   onChange={(e) => setFixedQuestionCount(Number(e.target.value))}
-                  className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-gray-800 rounded-lg"
+                  className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-surface-active rounded-lg"
                 />
-                <span className="text-[11px] text-gray-500">25题</span>
+                <span className="text-[11px] text-content-muted">25题</span>
               </div>
 
-              <p className="text-[11px] text-gray-500 mt-2.5">
+              <p className="text-[11px] text-content-muted mt-2.5">
                 💡 流程规划：破冰自我介绍 ➔ 核心提问 {fixedQuestionCount} 轮 ➔ 候选人反问与复盘结语（预计总交互 {fixedQuestionCount + 2} 次）。
               </p>
             </div>
           ) : (
-            <div className="bg-gray-950/50 border border-gray-800/80 rounded-2xl p-4">
+            <div className="bg-surface-subtle border border-line-subtle rounded-2xl p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-300 font-medium">安全保护上限 (防死循环)：</span>
-                  <span className="text-sm font-bold text-emerald-400 bg-emerald-950/50 px-2.5 py-0.5 rounded-lg border border-emerald-800/40">
+                  <span className="text-xs text-content-secondary font-medium">安全保护上限 (防死循环)：</span>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800/40">
                     最多 {adaptiveMaxQuestions} 题
                   </span>
                 </div>
@@ -825,7 +840,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                       className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
                         adaptiveMaxQuestions === preset.value
                           ? 'bg-emerald-600 text-white border-emerald-500'
-                          : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-700'
+                          : 'bg-surface-subtle border-line-default text-content-secondary hover:text-content-primary hover:border-line-focus'
                       }`}
                     >
                       {preset.label}
@@ -835,7 +850,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
               </div>
 
               <div className="flex items-center space-x-3">
-                <span className="text-[11px] text-gray-500">4题</span>
+                <span className="text-[11px] text-content-muted">4题</span>
                 <input
                   type="range"
                   min={4}
@@ -843,12 +858,12 @@ export const SetupView: React.FC<SetupViewProps> = ({
                   step={1}
                   value={adaptiveMaxQuestions}
                   onChange={(e) => setAdaptiveMaxQuestions(Number(e.target.value))}
-                  className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-gray-800 rounded-lg"
+                  className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-surface-active rounded-lg"
                 />
-                <span className="text-[11px] text-gray-500">30题</span>
+                <span className="text-[11px] text-content-muted">30题</span>
               </div>
 
-              <p className="text-[11px] text-gray-500 mt-2.5">
+              <p className="text-[11px] text-content-muted mt-2.5">
                 💡 机制保护：系统设有【最低 3 题】保底考察，避免草率下定论；一旦大模型研判能力画像已饱和或边界探明，将提前优雅收尾；最长不超过 {adaptiveMaxQuestions} 题。
               </p>
             </div>
@@ -858,34 +873,38 @@ export const SetupView: React.FC<SetupViewProps> = ({
         {/* Step 4: Resume Upload & JD Input */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Resume Box */}
-          <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 flex flex-col">
+          <div className="bg-surface border border-line-subtle rounded-3xl p-5 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-blue-400" />
-                <label className="text-sm font-semibold text-gray-200">
+                <label className="text-sm font-semibold text-content-primary">
                   步骤 4：候选人简历 (支持 PDF/Word/TXT 上传)
                 </label>
               </div>
 
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-content-muted whitespace-nowrap">使用示例</span>
                 <button
                   type="button"
                   onClick={() => setResumeText(SAMPLE_RESUMES.backend)}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                  className={SAMPLE_CHIP_CLASS}
+                  title="填入一份后端开发候选人示例简历"
                 >
                   后端
                 </button>
                 <button
                   type="button"
                   onClick={() => setResumeText(SAMPLE_RESUMES.ai_engineer)}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                  className={SAMPLE_CHIP_CLASS}
+                  title="填入一份 AI 工程候选人示例简历"
                 >
                   AI工程
                 </button>
                 <button
                   type="button"
                   onClick={() => setResumeText(SAMPLE_RESUMES.management)}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                  className={SAMPLE_CHIP_CLASS}
+                  title="填入一份技术管理岗候选人示例简历"
                 >
                   管理岗
                 </button>
@@ -911,7 +930,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                       setIsLoadingResume(false);
                     }
                   }}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  className="w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-1.5 text-xs text-content-secondary focus:outline-none focus:border-blue-500 disabled:opacity-50"
                   disabled={isLoadingResume}
                 >
                   <option value="">
@@ -931,7 +950,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
               onDragOver={handleDragOver}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className="mb-3 border-2 border-dashed border-gray-800 hover:border-blue-500/60 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer bg-gray-950/40 hover:bg-blue-950/10 transition group"
+              className="mb-3 border-2 border-dashed border-line-default hover:border-blue-400 dark:hover:border-blue-500/60 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer bg-surface-subtle hover:bg-blue-50/60 dark:hover:bg-blue-950/10 transition group"
             >
               <input
                 ref={fileInputRef}
@@ -955,8 +974,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
                   <span>已成功提取：{uploadSuccessName}</span>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2 text-xs text-gray-400 group-hover:text-blue-400 transition">
-                  <Upload className="w-4 h-4 text-gray-500 group-hover:text-blue-400" />
+                <div className="flex items-center space-x-2 text-xs text-content-secondary group-hover:text-blue-500 dark:group-hover:text-blue-400 transition">
+                  <Upload className="w-4 h-4 text-content-muted group-hover:text-blue-500 dark:group-hover:text-blue-400" />
                   <span>拖拽或点击上传本地简历 (支持 PDF, Word, TXT)</span>
                 </div>
               )}
@@ -967,39 +986,43 @@ export const SetupView: React.FC<SetupViewProps> = ({
               onChange={(e) => setResumeText(e.target.value)}
               placeholder="在此粘贴或上传个人简历文本..."
               rows={10}
-              className="w-full bg-gray-950/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 font-mono resize-none leading-relaxed flex-1"
+              className="w-full bg-surface-subtle border border-line-default rounded-xl p-3 text-xs text-content-primary placeholder-content-placeholder focus:outline-none focus:border-blue-500 font-mono resize-none leading-relaxed flex-1"
               required
             />
           </div>
 
           {/* JD Box */}
-          <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 flex flex-col">
+          <div className="bg-surface border border-line-subtle rounded-3xl p-5 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-2">
                 <Briefcase className="w-4 h-4 text-indigo-400" />
-                <label className="text-sm font-semibold text-gray-200">
+                <label className="text-sm font-semibold text-content-primary">
                   目标岗位描述 (Job Description)
                 </label>
               </div>
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-content-muted whitespace-nowrap">使用示例</span>
                 <button
                   type="button"
                   onClick={() => setJdText(SAMPLE_JDS.backend)}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                  className={SAMPLE_CHIP_CLASS}
+                  title="填入一份后端开发岗位示例 JD"
                 >
                   后端JD
                 </button>
                 <button
                   type="button"
                   onClick={() => setJdText(SAMPLE_JDS.ai_engineer)}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                  className={SAMPLE_CHIP_CLASS}
+                  title="填入一份 AI Agent 岗位示例 JD"
                 >
                   AgentJD
                 </button>
                 <button
                   type="button"
                   onClick={() => setJdText(SAMPLE_JDS.management)}
-                  className="text-[11px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+                  className={SAMPLE_CHIP_CLASS}
+                  title="填入一份技术管理岗示例 JD"
                 >
                   管理JD
                 </button>
@@ -1011,31 +1034,31 @@ export const SetupView: React.FC<SetupViewProps> = ({
               onChange={(e) => setJdText(e.target.value)}
               placeholder="在此粘贴企业招聘 JD（包含职责描述、硬性技能要求、软性要求）..."
               rows={14}
-              className="w-full bg-gray-950/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 font-mono resize-none leading-relaxed flex-1"
+              className="w-full bg-surface-subtle border border-line-default rounded-xl p-3 text-xs text-content-primary placeholder-content-placeholder focus:outline-none focus:border-indigo-500 font-mono resize-none leading-relaxed flex-1"
               required
             />
-            <p className="text-[11px] text-gray-500 mt-2">
+            <p className="text-[11px] text-content-muted mt-2">
               💡 提示：AI 影子观察员将根据目标岗位职责实时核对候选人回答的契合度。
             </p>
           </div>
         </div>
 
         {/* Mode and Style Settings */}
-        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5">
+        <div className="bg-surface border border-line-subtle rounded-3xl p-5 shadow-sm">
           <div className="flex items-center space-x-2 mb-4">
-            <Settings2 className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm font-semibold text-gray-200">
+            <Settings2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+            <span className="text-sm font-semibold text-content-primary">
               面试官风格与偏好 (Preferences)
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">面试官风格</label>
+              <label className="block text-xs text-content-secondary mb-1.5 font-medium">面试官风格</label>
               <select
                 value={style}
                 onChange={(e) => setStyle(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-2 text-xs text-content-primary focus:outline-none focus:border-blue-500"
               >
                 <option value="gentle">温和鼓励型 (循循善诱，注重思路引导)</option>
                 <option value="rigorous">严谨批判型 (探究逻辑自洽与系统边界)</option>
@@ -1044,11 +1067,11 @@ export const SetupView: React.FC<SetupViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">语言模式</label>
+              <label className="block text-xs text-content-secondary mb-1.5 font-medium">语言模式</label>
               <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-surface-subtle border border-line-default rounded-xl px-3 py-2 text-xs text-content-primary focus:outline-none focus:border-blue-500"
               >
                 <option value="zh">全中文普通话交流</option>
                 <option value="en">全英文交流 (English Mock Interview)</option>
@@ -1058,22 +1081,22 @@ export const SetupView: React.FC<SetupViewProps> = ({
         </div>
 
         {/* Web Search Feature Switch */}
-        <div className="bg-gray-900/70 border border-gray-800 rounded-3xl p-5 transition-colors hover:border-blue-500/30">
+        <div className="bg-surface border border-line-subtle rounded-3xl p-5 shadow-sm transition-colors hover:border-blue-300 dark:hover:border-blue-500/30">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start space-x-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 mt-0.5 shadow-inner">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 dark:bg-blue-500/10 dark:border-blue-500/30 dark:text-blue-400 mt-0.5">
                 <Globe className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-semibold text-gray-200">
+                  <span className="text-sm font-semibold text-content-primary">
                     联网搜索功能 (Web Search)
                   </span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white tracking-wide">
                     NEW
                   </span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1 max-w-xl leading-relaxed">
+                <p className="text-xs text-content-secondary mt-1 max-w-xl leading-relaxed">
                   开启后，面试官提问与 AI 模拟回答助手将实时联网检索最新技术规范、大厂高频面试真题与最佳实践方案（面试中亦可在顶部随时切换）。
                 </p>
               </div>
@@ -1083,7 +1106,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSearchConfigOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-gray-300 transition hover:border-emerald-700 hover:text-emerald-300"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line-default bg-surface-subtle px-3 py-2 text-xs text-content-secondary transition hover:border-status-success-border hover:text-status-success"
               >
                 <Settings2 className="h-3.5 w-3.5" />
                 <span>{hasLocalSearchKey ? 'Tavily 已配置' : '配置搜索引擎'}</span>
@@ -1095,7 +1118,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                   onChange={(e) => setWebSearchEnabled(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-11 h-6 bg-surface-active peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
           </div>
@@ -1122,11 +1145,11 @@ export const SetupView: React.FC<SetupViewProps> = ({
               </>
             )}
           </button>
-          <p className="flex items-center space-x-1.5 text-[11px] text-gray-500">
+          <p className="flex items-center space-x-1.5 text-[11px] text-content-muted">
             <Cpu className="w-3 h-3" />
             {customModel ? (
               <span>
-                本次面试将使用前端自定义模型 <span className="text-blue-400 font-medium">{customModel}</span>
+                本次面试将使用前端自定义模型 <span className="text-brand-primary font-medium">{customModel}</span>
               </span>
             ) : (
               <span>使用后端默认大模型配置（可在右上角「模型配置」随时切换）</span>

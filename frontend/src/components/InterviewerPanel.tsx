@@ -123,20 +123,20 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
   const lgCols = LG_COLS[Math.min(seats.length, 6)] || 'lg:grid-cols-6';
 
   return (
-    <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 backdrop-blur">
+    <div className="bg-surface border border-line-subtle rounded-2xl p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center space-x-2">
-          <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-          <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">
+          <Radio className="w-4 h-4 text-status-success animate-pulse" />
+          <h2 className="text-sm font-semibold text-content-primary uppercase tracking-wider">
             AI 面试官席位 (Live Agent Panel)
           </h2>
         </div>
 
         {/* Shadow Observer pill */}
-        <div className="flex items-center space-x-2 bg-gray-950 border border-gray-800 px-2.5 py-1 rounded-full text-xs text-gray-400">
-          <Eye className="w-3.5 h-3.5 text-indigo-400" />
+        <div className="flex items-center space-x-2 bg-surface-subtle border border-line-subtle px-2.5 py-1 rounded-full text-xs text-content-secondary">
+          <Eye className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
           <span>影子观察员:</span>
-          <span className="text-indigo-300 font-medium font-mono">
+          <span className="text-indigo-600 dark:text-indigo-300 font-medium font-mono">
             {shadowLogsCount} 轮实时监听评估中
           </span>
         </div>
@@ -152,8 +152,8 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
               key={agent.id}
               className={`relative rounded-xl p-2.5 border transition-all duration-300 ${
                 isActive
-                  ? `bg-gray-800/90 border-2 ${agent.activeBorder} shadow-lg scale-[1.02]`
-                  : 'bg-gray-950/40 border-gray-800/80 opacity-70 hover:opacity-90'
+                  ? `bg-surface-hover border-2 ${agent.activeBorder} shadow-lg scale-[1.02]`
+                  : 'bg-surface-subtle border-line-subtle opacity-70 hover:opacity-95'
               }`}
             >
               {isActive && (
@@ -174,18 +174,18 @@ export const InterviewerPanel: React.FC<InterviewerPanelProps> = ({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-100">{agent.name}</span>
+                    <span className="text-xs font-bold text-content-primary">{agent.name}</span>
                     {isActive && isThinking && (
-                      <span className="text-[10px] text-blue-400 animate-pulse font-mono">
+                      <span className="text-[10px] text-brand-primary animate-pulse font-mono">
                         思考中...
                       </span>
                     )}
                   </div>
-                  <div className="text-[10px] text-gray-400 truncate">{agent.role}</div>
+                  <div className="text-[10px] text-content-secondary truncate">{agent.role}</div>
                 </div>
               </div>
 
-              <p className="text-[10px] text-gray-500 mt-1.5 leading-snug line-clamp-2">
+              <p className="text-[10px] text-content-muted mt-1.5 leading-snug line-clamp-2">
                 {agent.desc}
               </p>
             </div>
