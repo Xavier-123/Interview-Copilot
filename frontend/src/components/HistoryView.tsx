@@ -14,6 +14,7 @@ import type { HistorySessionItem } from '../types';
 import { interviewTypeLabel } from '../types';
 import { ComparisonModal } from './ComparisonModal';
 import { TranscriptModal } from './TranscriptModal';
+import { ConfirmDialog } from './ConfirmDialog';
 import { apiFetch } from '../utils/api';
 
 interface HistoryViewProps {
@@ -23,6 +24,11 @@ interface HistoryViewProps {
   /** 受控勾选列表（由父级持有，跨页面返回时恢复勾选现场）；不传则组件内部自持 */
   selectedSessions?: string[];
   onSelectionChange?: (ids: string[]) => void;
+  /**
+   * 嵌入模式：由父级（面试管理页的 Tab）提供 max-width 与内边距时置 true，
+   * 避免双层容器导致切 Tab 时内容变窄又下沉。
+   */
+  embedded?: boolean;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -31,6 +37,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   hideBack = false,
   selectedSessions: controlledSelection,
   onSelectionChange,
+  embedded = false,
 }) => {
   const [history, setHistory] = useState<HistorySessionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +46,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const [transcriptSessionId, setTranscriptSessionId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** 待确认删除的目标（单条或批量），替代阻塞式 window.confirm */
+  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; label: string } | null>(null);
 
   const selectedSessions = controlledSelection ?? internalSelection;
   const updateSelection = (ids: string[]) => {
@@ -72,44 +81,47 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     setTimeout(() => setNotice(null), 4000);
   };
 
-  const handleDelete = async (sessionId: string, e: React.MouseEvent) => {
+  // 单条删除：先弹自绘确认框（页内统一，不再用阻塞式 window.confirm）
+  const handleDelete = (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('确认删除该场面试记录及复盘报告吗？')) return;
-
-    try {
-      await apiFetch(`/api/v1/interviews/history/${sessionId}`, {
-        method: 'DELETE',
-      });
-      setHistory((prev) => prev.filter((s) => s.session_id !== sessionId));
-      updateSelection(selectedSessions.filter((id) => id !== sessionId));
-    } catch (err) {
-      console.error('Failed to delete session:', err);
-      showError('删除失败，请检查网络连接');
-    }
+    setPendingDelete({ ids: [sessionId], label: '该场面试记录及复盘报告' });
   };
 
-  const handleBatchDelete = async (e: React.MouseEvent) => {
+  const handleBatchDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     const count = selectedSessions.length;
     if (count === 0 || deleting) return;
-    if (!confirm(`确认删除选中的 ${count} 场面试记录及复盘报告吗？此操作不可恢复。`)) return;
+    setPendingDelete({ ids: [...selectedSessions], label: `选中的 ${count} 场面试记录及复盘报告` });
+  };
 
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+    const ids = pendingDelete.ids;
+    const count = ids.length;
     setDeleting(true);
     try {
-      const data = await apiFetch<{ deleted?: number }>('/api/v1/interviews/history/batch-delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_ids: selectedSessions }),
-      });
-      const deleted = data.deleted ?? 0;
-      setHistory((prev) => prev.filter((s) => !selectedSessions.includes(s.session_id)));
-      updateSelection([]);
-      if (deleted < count) {
-        showError(`已删除 ${deleted} 条，${count - deleted} 条未找到或删除失败`);
+      if (count === 1) {
+        await apiFetch(`/api/v1/interviews/history/${ids[0]}`, { method: 'DELETE' });
+        setHistory((prev) => prev.filter((s) => s.session_id !== ids[0]));
+        updateSelection(selectedSessions.filter((id) => id !== ids[0]));
+      } else {
+        const data = await apiFetch<{ deleted?: number }>('/api/v1/interviews/history/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_ids: ids }),
+        });
+        const deleted = data.deleted ?? 0;
+        setHistory((prev) => prev.filter((s) => !ids.includes(s.session_id)));
+        updateSelection(selectedSessions.filter((id) => !ids.includes(id)));
+        if (deleted < count) {
+          showError(`已删除 ${deleted} 条，${count - deleted} 条未找到或删除失败`);
+        }
       }
+      setPendingDelete(null);
     } catch (err) {
-      console.error('Failed to batch delete sessions:', err);
-      showError('批量删除失败，请检查网络连接');
+      console.error('Failed to delete session(s):', err);
+      setPendingDelete(null);
+      showError(count === 1 ? '删除失败，请检查网络连接' : '批量删除失败，请检查网络连接');
     } finally {
       setDeleting(false);
     }
@@ -144,7 +156,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
+    <div className={embedded ? 'space-y-6' : 'max-w-6xl mx-auto py-8 px-4 space-y-6'}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -374,6 +386,22 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           onClose={() => setTranscriptSessionId(null)}
         />
       )}
+
+      {/* 删除确认：自绘弹窗，替代阻塞式 window.confirm */}
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="删除面试记录"
+        description={
+          pendingDelete
+            ? `确认删除${pendingDelete.label}吗？此操作不可恢复。`
+            : undefined
+        }
+        confirmLabel="删除"
+        tone="danger"
+        busy={deleting}
+        onConfirm={confirmPendingDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 };

@@ -716,26 +716,32 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                   )}
                 </div>
 
-                {/* Bottom Actions */}
-                <div className={`mt-5 pt-3 border-t flex items-center justify-between gap-2 ${
+                {/* Bottom Actions：次要操作为彩色 chip（图标+短文字），主 CTA 通栏 */}
+                <div className={`mt-5 pt-3 border-t space-y-2.5 ${
                   isDark ? 'border-gray-800/70' : 'border-gray-100'
                 }`}>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-center gap-2">
                     <button
                       onClick={() => handleEdit(resume.id)}
-                      className={`inline-flex items-center space-x-1 text-xs transition cursor-pointer px-2 py-1 rounded ${
-                        isDark ? 'text-gray-400 hover:text-blue-300 hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'
-                      }`}
+                      aria-label="完善与编辑简历"
                       title="完善与编辑简历"
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-medium whitespace-nowrap transition cursor-pointer ${
+                        isDark
+                          ? 'bg-blue-950/60 border-blue-800/40 text-blue-300 hover:bg-blue-900/60 hover:text-blue-200'
+                          : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:text-blue-800'
+                      }`}
                     >
                       <Pencil className="w-3.5 h-3.5" />
-                      <span>完善与编辑</span>
+                      <span>编辑</span>
                     </button>
                     <button
                       onClick={() => openPolish(resume.id, resume.filename)}
+                      aria-label="AI 从面试官视角体检这份简历"
                       title="AI 从面试官视角体检这份简历"
-                      className={`inline-flex items-center space-x-1 text-xs transition cursor-pointer px-2 py-1 rounded ${
-                        isDark ? 'text-gray-400 hover:text-amber-300 hover:bg-gray-800' : 'text-gray-600 hover:text-amber-600 hover:bg-gray-100'
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-medium whitespace-nowrap transition cursor-pointer ${
+                        isDark
+                          ? 'bg-amber-950/60 border-amber-800/40 text-amber-300 hover:bg-amber-900/60 hover:text-amber-200'
+                          : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 hover:text-amber-800'
                       }`}
                     >
                       <Wand2 className="w-3.5 h-3.5" />
@@ -743,10 +749,13 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                     </button>
                     <button
                       onClick={() => handleViewDetail(resume.id)}
-                      className={`inline-flex items-center space-x-1 text-xs transition cursor-pointer px-2 py-1 rounded ${
-                        isDark ? 'text-gray-400 hover:text-blue-300 hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'
-                      }`}
+                      aria-label="预览详情"
                       title="预览详情"
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-medium whitespace-nowrap transition cursor-pointer ${
+                        isDark
+                          ? 'bg-violet-950/60 border-violet-800/40 text-violet-300 hover:bg-violet-900/60 hover:text-violet-200'
+                          : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100 hover:text-violet-800'
+                      }`}
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>预览</span>
@@ -755,10 +764,10 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
 
                   <button
                     onClick={() => handleLaunchMock(resume)}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md shadow-blue-600/20 hover:shadow-blue-600/30 transition cursor-pointer"
+                    className="inline-flex w-full items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md shadow-blue-600/20 hover:shadow-blue-600/30 transition cursor-pointer whitespace-nowrap"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>以此发起模拟</span>
+                    <span>以此简历发起模拟</span>
                   </button>
                 </div>
               </div>
@@ -928,7 +937,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                     setPreviewResume(null);
                     openPolish(id, filename);
                   }}
-                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                     isDark
                       ? 'border-gray-700 hover:border-amber-500 text-gray-300 hover:text-amber-300'
                       : 'border-gray-300 hover:border-amber-500 text-gray-700 hover:text-amber-700 bg-white'
@@ -943,7 +952,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                     setPreviewResume(null);
                     handleEdit(id);
                   }}
-                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                     isDark
                       ? 'border-gray-700 hover:border-blue-500 text-gray-300 hover:text-blue-300'
                       : 'border-gray-300 hover:border-blue-500 text-gray-700 hover:text-blue-700 bg-white'
@@ -957,7 +966,7 @@ export const ResumeManagementView: React.FC<ResumeManagementViewProps> = ({
                     onSelectResumeForMock(previewResume.raw_text, previewResume.filename);
                     setPreviewResume(null);
                   }}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-md shadow-blue-600/20 transition cursor-pointer"
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-md shadow-blue-600/20 transition cursor-pointer whitespace-nowrap"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>以此发起模拟</span>

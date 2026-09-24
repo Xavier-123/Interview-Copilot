@@ -161,8 +161,8 @@ docker compose up --build
 | `LLM_TEMPERATURE` | `0.7` | 生成温度 |
 | `LLM_BASE_URL_ALLOWLIST` | 空 | 放行内网/本地模型域名的白名单，供 Ollama 等场景使用 |
 | `TAVILY_API_KEY` | 空 | 服务端默认联网搜索密钥，可被浏览器请求级配置覆盖 |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./interview_copilot.db` | 数据库连接串；默认数据文件位于 `backend/` |
-| `UPLOAD_DIR` | `./uploads` | 上传简历和转录文件目录 |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./interview_copilot.db` | 数据库连接串；相对路径的 sqlite 文件一律锚定到 `backend/` 目录，与启动服务时的工作目录无关（从项目根目录启动也不会再分裂出第二份数据库） |
+| `UPLOAD_DIR` | `./uploads` | 上传简历和转录文件目录；相对路径同样锚定到 `backend/` |
 
 > [!TIP]
 > 前端右上角的「**模型配置**」会把自定义 `base_url`、API Key、模型和 temperature 保存在当前浏览器的 `localStorage` 中，并在请求时优先于后端默认配置。请不要在共享电脑或公开环境保存个人密钥。

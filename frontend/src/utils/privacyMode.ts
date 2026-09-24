@@ -17,6 +17,9 @@ export const SENSITIVE_WORD_MAP: Array<[RegExp, string]> = [
   [/Interview-Copilot/g, 'Dev-Copilot'],
   [/Interview/g, 'Dev'],
   [/interview/g, 'dev'],
+  [/\bHiring\b/g, 'Staffing'],
+  [/\bJD\b/g, 'GW'],
+  [/\bjd\b/g, 'gw'],
   [/Candidate/g, 'Developer'],
   [/candidate/g, 'developer'],
   [/Resume/g, 'Doc'],
@@ -28,7 +31,13 @@ export const SENSITIVE_WORD_MAP: Array<[RegExp, string]> = [
   [/Job/g, 'Task'],
   [/job/g, 'task'],
 
-  // 中文长词优先匹配
+  // HR 系列（必须排在 面试官/面试 之前：否则 HR面试官 先被拼成 HRMSG 后，
+  // 词边界规则无法再命中其中的 HR）
+  [/HR面试官/g, 'RSMSG'],
+  [/HR面试/g, 'RSMS'],
+  [/HR面/g, 'RSM'],
+  [/\bHR\b/g, 'RS'],
+  [/\bhr\b/g, 'rs'],
   [/专业技术面试官/g, '专业技术MSG'],
   [/行为文化面试官/g, '行为文化MSG'],
   [/技术面试官/g, '技术MSG'],
@@ -40,13 +49,35 @@ export const SENSITIVE_WORD_MAP: Array<[RegExp, string]> = [
 
   // 核心敏感求职词汇
   [/面试/g, 'MS'],
+  // 轮次与考核环节（技术一面、业务终面、HR综合面、在线笔试等）。
+  // 必须排在 面试 之后：避免「综合面试」被拆成「综合M试」这类残缺文本
+  [/一面/g, '1M'],
+  [/二面/g, '2M'],
+  [/三面/g, '3M'],
+  [/四面/g, '4M'],
+  [/五面/g, '5M'],
+  [/终面/g, 'ZM'],
+  [/复试/g, 'FS'],
+  [/笔试/g, 'BS'],
+  [/机试/g, 'JS'],
+  [/技术面/g, '技术M'],
+  [/综合面/g, '综合M'],
+  [/行为面/g, '行为M'],
+  [/深度面/g, '深度M'],
+  [/高管面/g, '高管M'],
+  [/岗面/g, '岗M'],
+  [/Leader\s?面/g, 'LeaderM'],
+  // 求职流程词汇
   [/求职/g, 'QZ'],
   [/简历/g, 'JL'],
   [/岗位/g, 'GW'],
   [/投递/g, 'TD'],
-  [/薪资/g, 'XZ'],
-  [/薪酬/g, 'XC'],
-  [/谈薪/g, 'TX'],
+  [/校招/g, 'XZ'],
+  [/社招/g, 'SZ'],
+  [/秋招/g, 'QZ'],
+  [/春招/g, 'CZ'],
+  [/到岗/g, 'DG'],
+  [/入职/g, 'RZ'],
   [/招聘/g, 'ZP'],
   [/面经/g, 'MJ'],
   [/跳槽/g, 'TC'],
@@ -54,6 +85,15 @@ export const SENSITIVE_WORD_MAP: Array<[RegExp, string]> = [
   [/录用/g, 'LY'],
   [/猎头/g, 'LT'],
   [/内推/g, 'NT'],
+  // 薪资家族（与 薪资/薪酬/谈薪 互补，覆盖「月薪 Base」「调薪机制」「发薪日」等表述）
+  [/薪资/g, 'XZ'],
+  [/薪酬/g, 'XC'],
+  [/谈薪/g, 'TX'],
+  [/调薪/g, 'DX'],
+  [/月薪/g, 'YX'],
+  [/年薪/g, 'NX'],
+  [/底薪/g, 'DX'],
+  [/发薪/g, 'FX'],
 ];
 
 // 脱敏单段文本

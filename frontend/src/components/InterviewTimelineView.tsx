@@ -13,9 +13,6 @@ import {
   ChevronUp,
   FileText,
   Mail,
-  CheckCircle2,
-  XCircle,
-  Handshake,
   Compass,
   Copy,
   Check,
@@ -23,8 +20,12 @@ import {
   Coffee,
   HeartHandshake,
   BellRing,
+  AlertCircle,
 } from 'lucide-react';
 import type { InterviewScheduleItem, ScheduleStatus } from '../types';
+import { ScheduleStatusBadge } from './ScheduleStatusBadge';
+import { ScheduleStatusActions } from './ScheduleStatusActions';
+import { isExpiredUnmarked } from '../utils/scheduleStatus';
 import { useTheme } from '../context/ThemeContext';
 
 interface InterviewTimelineViewProps {
@@ -36,6 +37,12 @@ interface InterviewTimelineViewProps {
   onOpenCreate: (dateStr?: string) => void;
   onViewGuide: (schedule: InterviewScheduleItem) => void;
   onNavigateQuickMock: () => void;
+  /** 是否处于「状态筛选」中：为空状态区分「筛选无结果」与「确实没有日程」 */
+  isFiltered?: boolean;
+  /** 当前筛选档位名称，用于空状态文案 */
+  activeFilterLabel?: string;
+  /** 清除筛选（空状态里的引导按钮） */
+  onClearFilter?: () => void;
 }
 
 export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
@@ -47,6 +54,9 @@ export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
   onOpenCreate,
   onViewGuide,
   onNavigateQuickMock,
+  isFiltered = false,
+  activeFilterLabel,
+  onClearFilter,
 }) => {
   const { isDark } = useTheme();
 
@@ -79,9 +89,9 @@ export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
   const nextUpcomingId = useMemo(() => {
     const upcomings = sortedSchedules.filter((s) => s.status === 'upcoming');
     if (upcomings.length === 0) return null;
-    // 取未来时间最临近的一场
+    // 取未来时间最临近的一场；全部已过期时不回退到 upcomings[0]，否则会给过期面试戴上「下一场」呼吸灯
     const futureUpcoming = upcomings.find((s) => new Date(s.scheduled_at).getTime() >= currentTime - 1800000);
-    return futureUpcoming ? futureUpcoming.id : upcomings[0].id;
+    return futureUpcoming ? futureUpcoming.id : null;
   }, [sortedSchedules, currentTime]);
 
   const copyToClipboard = (text: string) => {
@@ -122,9 +132,11 @@ export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
       }
 
       if (diffMs <= 0) {
+        // 3 小时内当作正在进行；再往后当作已结束，避免给三天前的面试显示「进行中」
+        const elapsedHours = Math.floor(-diffMs / 3600000);
         return {
           isUpcoming: true,
-          label: '进行中 / 待更新状态',
+          label: elapsedHours >= 3 ? '已结束，待更新状态' : '进行中 / 待更新状态',
           encouragement: '面试时间已到达，保持冷静，专注发挥！面完后记得标记状态或复盘。',
           diffMs,
           days: 0,
@@ -181,76 +193,49 @@ export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
     }
   };
 
-  // 状态徽章渲染
-  // 与月历视图 InterviewCalendarView 共用同一套 status-* 设计 token 语义，
-  // 同一状态在两个视图里颜色必须一致，避免用户切换视图时重新认知。
-  const renderStatusBadge = (status: ScheduleStatus) => {
-    switch (status) {
-      case 'upcoming':
-        return (
-          <span
-            className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-status-warning-bg border-status-warning-border text-status-warning"
-          >
-            <Clock className="w-3 h-3" />
-            <span>待面试</span>
-          </span>
-        );
-      case 'completed':
-        return (
-          <span
-            className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-status-info-bg border-status-info-border text-status-info"
-          >
-            <CheckCircle2 className="w-3 h-3" />
-            <span>已面完</span>
-          </span>
-        );
-      case 'passed':
-        return (
-          <span
-            className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-status-success-bg border-status-success-border text-status-success"
-          >
-            <CheckCircle2 className="w-3 h-3" />
-            <span>已通过 / Offer</span>
-          </span>
-        );
-      case 'declined':
-        return (
-          <span
-            className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-surface-hover border-line-default text-content-secondary"
-          >
-            <Handshake className="w-3 h-3 text-content-muted" />
-            <span>已婉拒</span>
-          </span>
-        );
-      case 'failed':
-        return (
-          <span
-            className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-status-danger-bg border-status-danger-border text-status-danger"
-          >
-            <XCircle className="w-3 h-3" />
-            <span>未通过</span>
-          </span>
-        );
-      default:
-        return null;
-    }
-  };
+  // 状态徽章已抽到 ScheduleStatusBadge（与月历共用一个来源），此处不再本地维护 switch。
 
-  // 情感化空状态 (当筛选无数据或今天无面试时)
+  // 空状态：必须区分「当前筛选无结果」与「确实一条日程都没有」，
+  // 否则筛「未通过 / 已取消」为空时也会说「今天没有安排面试」，误导用户。
   if (sortedSchedules.length === 0) {
+    const shellCls = `py-16 text-center border border-dashed rounded-2xl p-8 space-y-6 transition-all ${
+      isDark ? 'border-gray-800 bg-gray-900/40 text-white' : 'border-gray-300 bg-white text-gray-900 shadow-sm'
+    }`;
+    const iconCls = `w-16 h-16 rounded-2xl flex items-center justify-center mx-auto transition-transform hover:scale-105 ${
+      isDark
+        ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400'
+        : 'bg-blue-50 border border-blue-200 text-blue-600'
+    }`;
+
+    if (isFiltered) {
+      return (
+        <div className={shellCls}>
+          <div className={iconCls}>
+            <Coffee className="w-8 h-8" />
+          </div>
+          <div className="space-y-2 max-w-md mx-auto">
+            <h3 className="text-lg font-bold">当前筛选下暂无日程</h3>
+            <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              {activeFilterLabel ? `「${activeFilterLabel}」筛选下没有匹配的面试日程。` : '当前筛选条件下没有匹配的面试日程。'}
+              清除筛选即可查看全部日程。
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+            <button
+              onClick={onClearFilter}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md shadow-blue-600/20 hover:shadow-blue-600/30 transition cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>清除筛选，查看全部</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div
-        className={`py-16 text-center border border-dashed rounded-2xl p-8 space-y-6 transition-all ${
-          isDark ? 'border-gray-800 bg-gray-900/40 text-white' : 'border-gray-300 bg-white text-gray-900 shadow-sm'
-        }`}
-      >
-        <div
-          className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto transition-transform hover:scale-105 ${
-            isDark
-              ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400'
-              : 'bg-blue-50 border border-blue-200 text-blue-600'
-          }`}
-        >
+      <div className={shellCls}>
+        <div className={iconCls}>
           <Coffee className="w-8 h-8" />
         </div>
 
@@ -304,6 +289,7 @@ export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
         const isUpcoming = schedule.status === 'upcoming';
         const { dateStr, weekDay, timeStr } = parseDateTimeParts(schedule.scheduled_at);
         const countdown = getCountdownData(schedule.scheduled_at, schedule.status);
+        const isExpired = isExpiredUnmarked(schedule);
         const hasJd = Boolean(schedule.jd_text?.trim());
         const isJdExpanded = expandedJdId === schedule.id;
 
@@ -434,7 +420,18 @@ export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2 self-start shrink-0">
-                    {renderStatusBadge(schedule.status)}
+                    {isExpired ? (
+                      // 过期未标记比「待面试」信息量更大，直接替代它，避免两个徽章并排拥挤
+                      <span
+                        className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-status-danger-bg border-status-danger-border text-status-danger"
+                        title="面试时间已过，但状态仍停在「待面试」。请标记为已面完并补记结果。"
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                        <span>已过期未标记</span>
+                      </span>
+                    ) : (
+                      <ScheduleStatusBadge status={schedule.status} />
+                    )}
                   </div>
                 </div>
 
@@ -627,57 +624,14 @@ export const InterviewTimelineView: React.FC<InterviewTimelineViewProps> = ({
                   isDark ? 'border-gray-800/80' : 'border-gray-100'
                 }`}
               >
-                {/* 状态快捷流转与小操作 */}
+                {/* 状态快捷流转与编辑：可去往哪些状态由共享状态机决定
+                    （含回退到待面试、取消一场面试、从已取消恢复），不再本地硬编码按钮 */}
                 <div className="flex items-center space-x-1.5 flex-wrap">
-                  {schedule.status === 'upcoming' && (
-                    <button
-                      onClick={(e) => onQuickStatusChange(schedule.id, 'completed', e)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                        isDark
-                          ? 'bg-blue-950/60 hover:bg-blue-900 border-blue-800/50 text-blue-300'
-                          : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'
-                      }`}
-                    >
-                      标记已面完
-                    </button>
-                  )}
-
-                  {schedule.status === 'completed' && (
-                    <>
-                      <button
-                        onClick={(e) => onQuickStatusChange(schedule.id, 'passed', e)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                          isDark
-                            ? 'bg-emerald-950/60 hover:bg-emerald-900 border-emerald-800/50 text-emerald-300'
-                            : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'
-                        }`}
-                      >
-                        标记通过
-                      </button>
-                      <button
-                        onClick={(e) => onQuickStatusChange(schedule.id, 'failed', e)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                          isDark
-                            ? 'bg-red-950/60 hover:bg-red-900 border-red-800/50 text-red-300'
-                            : 'bg-red-50 hover:bg-red-100 border-red-200 text-red-700'
-                        }`}
-                      >
-                        未通过
-                      </button>
-                      {schedule.interview_round.includes('薪') && (
-                        <button
-                          onClick={(e) => onQuickStatusChange(schedule.id, 'declined', e)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                            isDark
-                              ? 'bg-violet-950/60 hover:bg-violet-900 border-violet-800/50 text-violet-300'
-                              : 'bg-violet-50 hover:bg-violet-100 border-violet-200 text-violet-700'
-                          }`}
-                        >
-                          婉拒 Offer
-                        </button>
-                      )}
-                    </>
-                  )}
+                  <ScheduleStatusActions
+                    status={schedule.status}
+                    allowDecline={schedule.interview_round.includes('薪')}
+                    onChange={(next, e) => onQuickStatusChange(schedule.id, next, e)}
+                  />
 
                   <button
                     onClick={(e) => onEditSchedule(schedule, e)}

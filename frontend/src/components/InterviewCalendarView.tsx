@@ -16,15 +16,15 @@ import {
   Check,
   X,
   Calendar as CalendarIcon,
-  CheckCircle2,
-  XCircle,
-  Handshake,
   ChevronDown,
   ChevronUp,
   Banknote,
   FileText,
 } from 'lucide-react';
 import type { InterviewScheduleItem, ScheduleStatus } from '../types';
+import { ScheduleStatusBadge } from './ScheduleStatusBadge';
+import { ScheduleStatusActions } from './ScheduleStatusActions';
+import { SCHEDULE_STATUS_META } from '../utils/scheduleStatus';
 
 interface InterviewCalendarViewProps {
   schedules: InterviewScheduleItem[];
@@ -113,7 +113,8 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
   const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth()); // 0-11
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [expandedJdId, setExpandedJdId] = useState<string | null>(null);
-  const [copiedLink, setCopiedLink] = useState(false);
+  // 记录「被复制的那条文本」而非单个布尔：抽屉内多张卡片共用状态时，布尔会让所有复制按钮同时变对勾
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   // Group schedules by YYYY-MM-DD
   const schedulesByDate = useMemo(() => {
@@ -260,79 +261,15 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
     return schedulesByDate[selectedDateKey] || [];
   }, [selectedDateKey, schedulesByDate]);
 
-  // Status Badge Helper
-  // 状态语义统一走 status-* 设计 token，随 classic-dark / linear-light 自动切换，
-  // 并与时间轴视图 InterviewTimelineView 保持同一套映射。
-  const getStatusBadge = (status: ScheduleStatus) => {
-    switch (status) {
-      case 'upcoming':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-warning-bg border border-status-warning-border text-status-warning">
-            <Clock className="w-2.5 h-2.5" />
-            <span>待面试</span>
-          </span>
-        );
-      case 'completed':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-info-bg border border-status-info-border text-status-info">
-            <CheckCircle2 className="w-2.5 h-2.5" />
-            <span>已面试</span>
-          </span>
-        );
-      case 'passed':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-success-bg border border-status-success-border text-status-success">
-            <CheckCircle2 className="w-2.5 h-2.5" />
-            <span>已通过</span>
-          </span>
-        );
-      case 'declined':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-hover border border-line-default text-content-secondary">
-            <Handshake className="w-2.5 h-2.5 text-content-muted" />
-            <span>已婉拒</span>
-          </span>
-        );
-      case 'failed':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-status-danger-bg border border-status-danger-border text-status-danger">
-            <XCircle className="w-2.5 h-2.5" />
-            <span>未通过</span>
-          </span>
-        );
-      case 'cancelled':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-hover border border-line-subtle text-content-muted">
-            <span>已取消</span>
-          </span>
-        );
-      default:
-        return null;
-    }
-  };
+  // 状态徽章已抽到 ScheduleStatusBadge（与时间轴共用一个来源），此处不再本地维护 switch。
 
   // Schedule Badge in cell
-  const getItemBadgeStyle = (status: ScheduleStatus) => {
-    switch (status) {
-      case 'upcoming':
-        return 'bg-status-warning-bg border-status-warning-border text-status-warning hover:border-status-warning';
-      case 'passed':
-        return 'bg-status-success-bg border-status-success-border text-status-success hover:border-status-success';
-      case 'completed':
-        return 'bg-status-info-bg border-status-info-border text-status-info hover:border-status-info';
-      case 'declined':
-        return 'bg-surface-hover border-line-default text-content-secondary hover:border-line-focus';
-      case 'failed':
-        return 'bg-status-danger-bg border-status-danger-border text-status-danger hover:border-status-danger';
-      default:
-        return 'bg-surface-hover border-line-subtle text-content-secondary hover:border-line-default';
-    }
-  };
+  const getItemBadgeStyle = (status: ScheduleStatus) => SCHEDULE_STATUS_META[status].chipClass;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+    setCopiedLink(text);
+    setTimeout(() => setCopiedLink(null), 2000);
   };
 
   return (
@@ -514,17 +451,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                     {cell.schedules.slice(0, 5).map((s, idx) => (
                       <span
                         key={idx}
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          s.status === 'upcoming'
-                            ? 'bg-status-warning'
-                            : s.status === 'passed'
-                            ? 'bg-status-success'
-                            : s.status === 'completed'
-                            ? 'bg-status-info'
-                            : s.status === 'failed'
-                            ? 'bg-status-danger'
-                            : 'bg-content-muted'
-                        }`}
+                        className={`w-1.5 h-1.5 rounded-full ${SCHEDULE_STATUS_META[s.status].dotClass}`}
                       />
                     ))}
                   </div>
@@ -653,7 +580,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                                 {schedule.interview_round}
                               </span>
                             </div>
-                            <div>{getStatusBadge(schedule.status)}</div>
+                            <div><ScheduleStatusBadge status={schedule.status} size="sm" /></div>
                           </div>
 
                           {/* Company & Role */}
@@ -692,7 +619,7 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
                                   className="p-1 rounded hover:bg-surface-active text-content-secondary hover:text-content-primary transition cursor-pointer"
                                   title="复制链接/地址"
                                 >
-                                  {copiedLink ? (
+                                  {copiedLink === schedule.meeting_link_or_address ? (
                                     <Check className="w-3.5 h-3.5 text-status-success" />
                                   ) : (
                                     <Copy className="w-3.5 h-3.5" />
@@ -772,26 +699,14 @@ export const InterviewCalendarView: React.FC<InterviewCalendarViewProps> = ({
 
                           {/* Card Footer: Quick Status Switch + Edit + Delete */}
                           <div className="pt-2 border-t border-line-subtle flex items-center justify-between text-xs">
-                            {/* Quick Status Buttons */}
-                            <div className="flex items-center space-x-1">
-                              {schedule.status !== 'passed' && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => onQuickStatusChange(schedule.id, 'passed', e)}
-                                  className="px-2 py-1 rounded bg-status-success-bg hover:border-status-success border border-status-success-border text-status-success text-[10px] transition cursor-pointer"
-                                >
-                                  标记通过
-                                </button>
-                              )}
-                              {schedule.status !== 'failed' && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => onQuickStatusChange(schedule.id, 'failed', e)}
-                                  className="px-2 py-1 rounded bg-status-danger-bg hover:border-status-danger border border-status-danger-border text-status-danger text-[10px] transition cursor-pointer"
-                                >
-                                  未通过
-                                </button>
-                              )}
+                            {/* Quick Status Buttons：与时间轴共用同一状态机，不再允许从待面试越级直标结果 */}
+                            <div className="flex items-center space-x-1 flex-wrap">
+                              <ScheduleStatusActions
+                                status={schedule.status}
+                                size="sm"
+                                allowDecline={schedule.interview_round.includes('薪')}
+                                onChange={(next, e) => onQuickStatusChange(schedule.id, next, e)}
+                              />
                             </div>
 
                             {/* Edit & Delete */}
